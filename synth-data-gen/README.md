@@ -1,53 +1,36 @@
-# GateSynth — sequence-consistent synthetic UAV gate dataset generator
+# GateSynth Accelerated
 
-This repository generates temporally coherent synthetic gate-flight sequences that follow the canonical UAV gate perception dataset contract.
+Synthetic sequence generator for the canonical UAV gate perception dataset contract.
 
-## What it produces
+This accelerated version adds:
 
-- RGB JPEG frames
-- one `uint16` instance-ID PNG per frame (`0=background`, `1..N=frame-local gate IDs`)
-- persistent `track_id` per physical gate across a sequence
-- camera intrinsics and camera/world transforms
-- drone pose and velocity
-- static gate world pose and camera-relative pose
-- 8 physical gate keypoints (outer TL/TR/BR/BL + inner TL/TR/BR/BL)
-- visible/occluded/out-of-frame keypoint state
-- 3D keypoints in camera and world coordinates
-- visible and amodal bounding boxes
-- distance, optical depth, view angle
-- visible area, occlusion fraction, truncation fraction
-- current/next route target
-- fixed sequence-level train/validation/test splits
-- sequence-consistent photometric degradation settings
-- checksums + dataset validator
+- **sequence-parallel generation** with multiple worker processes
+- **optional GPU batched photometric augmentation** using PyTorch/CUDA
+- large-scale configs intended for generating **many sequences**
+- the same output schema as the original pipeline
 
-## Gate skin
+## What it generates
 
-Pass your `SAMPLE_GATE_aigp.jpg` to `--gate-skin`.
+For each sequence:
 
-The ring alpha mask is cut using exactly:
+- RGB frames
+- one uint16 instance-mask PNG per frame
+- `sequence.json`
+- `frames.jsonl`
+- train/validation/test sequence manifests
+- `dataset.json`
+- `gate_geometry.json`
 
-```python
-OG_GATE_DICT = {
-    "outer": [[117,117],[906,117],[906,906],[117,906]],
-    "inner": [[292,292],[731,292],[731,731],[292,731]],
-}
-```
+The data follows the canonical contract:
 
-The image is projectively warped onto a physical gate with:
+- one frame-local integer instance mask per image (`0 = background`, `1..N = gate mask IDs`)
+- persistent `track_id` per gate across a sequence
+- 8 canonical projected 2D keypoints per gate
+- 3D keypoints, gate pose, camera pose, drone pose, distance, depth, visibility, occlusion, truncation, route metadata, etc.
 
-- outer: 2.7 m × 2.7 m
-- inner: 1.5 m × 1.5 m
-- depth: 0.26 m
+## Installation
 
-## Install
-Navigate to the GateSynth folder:
-
-```bash
-cd synth-data-gen
-```
-
-And set up with `uv`:
+CPU-only:
 
 ```bash
 uv venv
@@ -55,50 +38,140 @@ source .venv/bin/activate
 uv pip install -e .
 ```
 
-## Generate a smoke-test dataset
+With optional GPU augmentation:
 
 ```bash
-python3 scripts/generate.py \
+uv venv
+source .venv/bin/activate
+uv pip install -e '.[gpu]'
+```
+
+You may also install your own CUDA-enabled PyTorch build manually.
+
+## Gate skin
+
+The generator expects your original `SAMPLE_GATE_aigp.jpg` and cuts out the gate ring using:
+
+```python
+OG_GATE_DICT = {
+    "outer": [[117, 117], [906, 117], [906, 906], [117, 906]],
+    "inner": [[292, 292], [731, 292], [731, 731], [292, 731]],
+}
+```
+
+## Fast usage modes
+
+### 1) Large-scale GPU-augmented mode
+
+This is best when you want to exploit the RTX 4070 for batched photometric corruption. It runs one main generation process and batches the augmentations on GPU.
+
+```bash
+python scripts/generate.py \
+  --config configs/large_scale_gpu.yaml \
+  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
+  --output "../data/synth_large_$(date +%m%d)"
+```
+
+Notes:
+
+- `generation.num_workers: 1`
+- `acceleration.photometric_backend: auto`
+- `acceleration.device: cuda`
+- `acceleration.frame_batch_size: 32`
+- `write_checksums: false` for speed
+
+### 2) Large-scale CPU-parallel mode
+
+This is best when sequence rendering and disk writing dominate. Multiple worker processes each render full sequences independently.
+
+```bash
+python scripts/generate.py \
+  --config configs/large_scale_cpu_parallel.yaml \
+  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
+  --output "../data/synth_large_$(date +%m%d)"
+```
+
+Notes:
+
+- `generation.num_workers: 8` by default
+- augmentation stays on CPU
+- often very competitive because OpenCV warping/compositing is CPU-heavy
+
+### 3) Quick smoke test
+
+```bash
+python scripts/generate.py \
   --config configs/smoke.yaml \
   --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
-  --output "../data/synth_smoke$(date +%m%d)"
+  --output "../data/synth_smoke_$(date +%m%d)"
 ```
 
-## Validate
+## Command-line overrides
+
+You can override the worker count or photometric backend directly:
 
 ```bash
-python3 scripts/validate_dataset.py "../data/synth_smoke$(date +%m%d)"
+python scripts/generate.py \
+  --config configs/large_scale_gpu.yaml \
+  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
+  --workers 1 \
+  --photometric-backend auto \
+  --device cuda
 ```
 
-## Backgrounds
+or:
 
-By default the generator can create procedural backgrounds. For more realism set:
-
-```yaml
-render:
-  backgrounds_dir: /path/to/background/images
+```bash
+python scripts/generate.py \
+  --config configs/large_scale_cpu_parallel.yaml \
+  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
+  --workers 12
 ```
 
-The generator chooses one background source per sequence and performs smooth temporal pan/crop so frames remain coherent.
+## Tuning guidance
 
-## Why geometry is not implemented as random 2D rotations
+### If you want maximum total throughput
 
-Gate pose is generated in 3D, then projected through a pinhole camera. The course contains static gates with randomized yaw/pitch/roll, while the virtual drone follows a smooth camera trajectory through the course. This gives coherent perspective changes and trackable frame-to-frame pose.
+Try both:
 
-"Zoom" is produced by varying focal length and range; "crop"/truncation is produced by camera trajectory and framing. This preserves exact geometric ground truth and camera intrinsics.
+- `large_scale_gpu.yaml`
+- `large_scale_cpu_parallel.yaml`
 
-## Sequence-consistent degradation
+because the bottleneck depends on your exact machine:
 
-Each sequence samples one degradation tier (`clean`, `low`, `medium`, `high`) and one fixed set of strengths for brightness, contrast, saturation, gamma, blur, motion blur, Gaussian noise, speckle noise, JPEG compression, vignette, color temperature, shadow, and flare.
+- if **photometric corruption** dominates, GPU mode wins
+- if **OpenCV warping/compositing + JPEG writing** dominates, CPU-parallel mode may win
 
-The strength remains fixed for the whole trajectory; stochastic noise realization and slow lighting phase vary frame-to-frame. This avoids unrealistic abrupt domain changes while still giving temporal variety.
+### Good starting values on an RTX 4070 machine
 
-## Scaling for RTX 4070
+GPU mode:
 
-The renderer is currently CPU/OpenCV based. A 4070 is useful for training but this generator emphasizes deterministic geometry and correctness. You can parallelize sequence generation safely because every sequence has an independent deterministic seed. For a large dataset, launch separate configs/ranges in parallel or add a multiprocessing wrapper around sequence generation.
+- `image: 1280x720`
+- `frame_batch_size: 32`
+- `num_workers: 1`
 
-Recommended first smoke test: 20–50 sequences at 640×360 or 960×540. Once model plumbing is verified, scale to thousands of sequences and higher resolution.
+CPU-parallel mode:
 
-## Important caveats
+- `num_workers: 6` to `10`
+- leave a little headroom for OS / disk I/O
 
-This is a synthetic smoke-test renderer, not a replacement for Isaac Sim. It uses projective textured gate rendering and approximate painter-style depth ordering. It is intentionally designed to stress model/data interfaces while preserving exact camera/gate geometry. Isaac data should replace or augment it for final model selection.
+## Validation
+
+```bash
+python scripts/validate_dataset.py  \
+  --output "../data/synth_large_$(date +%m%d)"
+```
+
+## Speed notes
+
+For very large runs, these settings save time:
+
+- `write_checksums: false`
+- use JPEG quality around `90-93`
+- prefer SSD output
+- use a real background directory only if you need it
+- benchmark GPU mode vs CPU-parallel mode on ~50 sequences before launching thousands
+
+## Output compatibility
+
+This accelerated version preserves the same canonical dataset structure and semantics, so your future Isaac exporter can target the exact same format and all model loaders can remain unchanged.

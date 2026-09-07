@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gatesynth"
-version = "0.1.0"
+version = "0.2.0"
 description = "Sequence-consistent synthetic UAV gate perception dataset generator"
 requires-python = ">=3.10"
 dependencies = [
@@ -13,6 +13,11 @@ dependencies = [
   "PyYAML>=6.0",
   "scipy>=1.10",
   "tqdm>=4.66"
+]
+
+[project.optional-dependencies]
+gpu = [
+  "torch>=2.1"
 ]
 
 [tool.setuptools.packages.find]
