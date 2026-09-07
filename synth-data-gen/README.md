@@ -44,7 +44,7 @@ The image is projectively warped onto a physical gate with:
 
 ```bash
 cd synth-data-gen
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 ```
@@ -60,7 +60,7 @@ uv pip install -e .
 ## Generate a smoke-test dataset
 
 ```bash
-python scripts/generate.py \
+python3 scripts/generate.py \
   --config configs/smoke.yaml \
   --gate-skin ../assets/gate_skinsSAMPLE_GATE_aigp.jpg
 ```
@@ -68,7 +68,7 @@ python scripts/generate.py \
 Override output directory:
 
 ```bash
-python scripts/generate.py \
+python3 scripts/generate.py \
   --config configs/smoke.yaml \
   --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
   --output "../data/synth_smoke$(date +%m%d)"
@@ -77,7 +77,7 @@ python scripts/generate.py \
 ## Validate
 
 ```bash
-python scripts/validate_dataset.py "../data/synth_smoke$(date +%m%d)"
+python3 scripts/validate_dataset.py "../data/synth_smoke$(date +%m%d)"
 ```
 
 ## Backgrounds
