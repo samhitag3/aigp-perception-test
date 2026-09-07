@@ -1,3 +1,12 @@
 data*/
 outputs*/
 runs*/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Packaging/build artifacts
+*.egg-info/
+build/
+dist/
