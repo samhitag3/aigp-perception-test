@@ -41,15 +41,13 @@ The image is projectively warped onto a physical gate with:
 - depth: 0.26 m
 
 ## Install
+Navigate to the GateSynth folder:
 
 ```bash
 cd synth-data-gen
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
 ```
 
-Or with `uv`:
+And set up with `uv`:
 
 ```bash
 uv venv
