@@ -256,11 +256,11 @@ Do not repeatedly use the test split during model development. Once the finalist
 
 ```bash
 uv run python scripts/evaluate_checkpoint.py \
-  --checkpoint "runs/final_gateperceive_$(date +%m%d)r/best.pt" \
+  --checkpoint "runs_nn/final_gateperceive_$(date +%m%d)r/best.pt" \
   --dataset-root "$DATASET_ROOT" \
   --split test \
   --device cuda \
-  --output "runs/final_gateperceiver_$(date +%m%d)/evaluation_test.json"
+  --output "runs_nn/final_gateperceiver_$(date +%m%d)/evaluation_test.json"
 ```
 
 # Video inference

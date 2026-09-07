@@ -2,7 +2,7 @@ seed: 42
 optuna:
   study_name: temporal_mask_keypoints
 dataset:
-  root: ../data/perception_dataset_v1
+  root: ../data/synth_large_0906
   train_splits: [train]
   val_splits: [validation]
   max_train_sequences: 40

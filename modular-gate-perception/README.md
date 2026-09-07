@@ -165,7 +165,7 @@ The example configs use:
 
 ```yaml
 dataset:
-  root: ../data/perception_dataset_v1
+  root: ../data/synth_large_0906
 ```
 
 Change this once to the actual canonical dataset root if necessary. Every model reads the same folder.
@@ -174,7 +174,7 @@ Validate the dataset before training:
 
 ```bash
 uv run python -m gateperception.data.validate \
-  --dataset ../data/perception_dataset_v1
+  --dataset ../data/synth_large_0906
 ```
 
 ## Training strategy
@@ -213,7 +213,7 @@ Use this first to verify data compatibility, loss behavior, GPU memory, and whet
 ```bash
 uv run python scripts/train_segmentation.py \
   --config configs/segmentation/cheap.yaml \
-  --run-dir runs/seg_cheap \
+  --run-dir "../runs_mod/seg_cheap_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -224,7 +224,7 @@ The keypoint model trains independently from GT instance masks, so it can run be
 ```bash
 uv run python scripts/train_keypoints.py \
   --config configs/keypoints/cheap.yaml \
-  --run-dir runs/keypoints_cheap \
+  --run-dir "../runs_mod/keypoints_cheap_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -247,7 +247,7 @@ evaluation.json
 ```bash
 uv run python scripts/train_segmentation.py \
   --config configs/segmentation/baseline.yaml \
-  --run-dir runs/seg_baseline \
+  --run-dir "../runs_mod/seg_baseline_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -256,7 +256,7 @@ uv run python scripts/train_segmentation.py \
 ```bash
 uv run python scripts/train_keypoints.py \
   --config configs/keypoints/baseline.yaml \
-  --run-dir runs/keypoints_baseline \
+  --run-dir "../runs_mod/keypoints_baseline_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -273,8 +273,8 @@ The tuning configs intentionally use a limited number of sequences and fewer epo
 ```bash
 uv run python scripts/tune_segmentation_optuna.py \
   --config configs/segmentation/optuna.yaml \
-  --study-dir runs/seg_tuning \
-  --init-checkpoint runs/seg_baseline/best.pt \
+  --study-dir "../runs_mod/seg_tuning_$(date +%m%d)" \
+  --init-checkpoint "../runs_mod/seg_baseline_$(date +%m%d)/best.pt" \
   --device cuda \
   --n-trials 30
 ```
@@ -282,9 +282,9 @@ uv run python scripts/tune_segmentation_optuna.py \
 Outputs include:
 
 ```text
-runs/seg_tuning/study.db
-runs/seg_tuning/best_config.yaml
-runs/seg_tuning/trial_XXXX/
+../runs_mod/seg_tuning_$(date +%m%d)/study.db
+../runs_mod/seg_tuning_$(date +%m%d)/best_config.yaml
+../runs_mod/seg_tuning_$(date +%m%d)/trial_XXXX/
 ```
 
 ### Keypoint tuning
@@ -292,8 +292,8 @@ runs/seg_tuning/trial_XXXX/
 ```bash
 uv run python scripts/tune_keypoints_optuna.py \
   --config configs/keypoints/optuna.yaml \
-  --study-dir runs/keypoints_tuning \
-  --init-checkpoint runs/keypoints_baseline/best.pt \
+  --study-dir "../runs_mod/keypoints_tuning_$(date +%m%d)" \
+  --init-checkpoint "../runs_mod/keypoints_baseline_$(date +%m%d)/best.pt" \
   --device cuda \
   --n-trials 30
 ```
@@ -311,9 +311,9 @@ Merge only the tuned hyperparameters into the full final schedule:
 ```bash
 uv run python scripts/make_final_config.py \
   --base-final configs/segmentation/final.yaml \
-  --tuned runs/seg_tuning/best_config.yaml \
+  --tuned "../runs_mod/seg_tuning_$(date +%m%d)/best_config.yaml" \
   --kind segmentation \
-  --output runs/seg_tuning/final_config.yaml
+  --output "../runs_mod/seg_tuning_$(date +%m%d)/final_config.yaml"
 ```
 
 ### Keypoints
@@ -321,9 +321,9 @@ uv run python scripts/make_final_config.py \
 ```bash
 uv run python scripts/make_final_config.py \
   --base-final configs/keypoints/final.yaml \
-  --tuned runs/keypoints_tuning/best_config.yaml \
+  --tuned "../runs_mod/keypoints_tuning_$(date +%m%d)/best_config.yaml" \
   --kind keypoints \
-  --output runs/keypoints_tuning/final_config.yaml
+  --output "../runs_mod/keypoints_tuning_$(date +%m%d)/final_config.yaml"
 ```
 
 ---
@@ -336,9 +336,9 @@ The final configs consume every sequence in `train_sequences.txt`, while preserv
 
 ```bash
 uv run python scripts/train_segmentation.py \
-  --config runs/seg_tuning/final_config.yaml \
-  --init-checkpoint runs/seg_baseline/best.pt \
-  --run-dir runs/seg_final \
+  --config "../runs_mod/seg_tuning_$(date +%m%d)/final_config.yaml" \
+  --init-checkpoint "../runs_mod/seg_baseline_$(date +%m%d)/best.pt" \
+  --run-dir "../runs_mod/seg_final_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -346,9 +346,9 @@ uv run python scripts/train_segmentation.py \
 
 ```bash
 uv run python scripts/train_keypoints.py \
-  --config runs/keypoints_tuning/final_config.yaml \
-  --init-checkpoint runs/keypoints_baseline/best.pt \
-  --run-dir runs/keypoints_final \
+  --config "../runs_mod/keypoints_tuning_$(date +%m%d)/final_config.yaml" \
+  --init-checkpoint "../runs_mod/keypoints_baseline_$(date +%m%d)/best.pt \
+  --run-dir "../runs_mod/keypoints_final_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -362,11 +362,11 @@ The pose stage requires no training.
 uv run python scripts/infer_dataset.py \
   --dataset ../data/perception_dataset_v1 \
   --split test \
-  --seg-checkpoint runs/seg_final/best.pt \
-  --keypoint-checkpoint runs/keypoints_final/best.pt \
+  --seg-checkpoint "../runs_mod/seg_final_$(date +%m%d)/best.pt" \
+  --keypoint-checkpoint "../runs_mod/keypoints_final_$(date +%m%d)/best.pt" \
   --camera-config configs/camera.yaml \
   --gate-geometry configs/gate_geometry.yaml \
-  --output outputs/test_predictions \
+  --output "../outputs_mod/test_predictions_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -376,8 +376,8 @@ Then compute the canonical report:
 uv run python scripts/evaluate_predictions.py \
   --dataset ../data/perception_dataset_v1 \
   --split test \
-  --predictions outputs/test_predictions \
-  --output outputs/test_evaluation
+  --predictions "../outputs/test_predictions_$(date +%m%d)" \
+  --output "../outputs/test_evaluation_$(date +%m%d)"
 ```
 
 This writes:
@@ -398,12 +398,12 @@ The video should correspond to the calibrated `640x360` camera. By default the s
 
 ```bash
 uv run python scripts/infer_video.py \
-  --video path/to/race_video.mp4 \
-  --seg-checkpoint runs/seg_final/best.pt \
-  --keypoint-checkpoint runs/keypoints_final/best.pt \
+  --video ../data/refined_target/sim0721-10/video.mp4 \
+  --seg-checkpoint "../runs_mod/seg_final_$(date +%m%d)/best.pt" \
+  --keypoint-checkpoint "../runs_mod/keypoints_final_$(date +%m%d)/best.pt" \
   --camera-config configs/camera.yaml \
   --gate-geometry configs/gate_geometry.yaml \
-  --output outputs/race_video \
+  --output "outputs/race_video \
   --device cuda
 ```
 
@@ -412,8 +412,8 @@ If you intentionally want the script to resize a differently sized source to the
 ```bash
 uv run python scripts/infer_video.py \
   --video path/to/race_video.mp4 \
-  --seg-checkpoint runs/seg_final/best.pt \
-  --keypoint-checkpoint runs/keypoints_final/best.pt \
+  --seg-checkpoint "../runs_mod/seg_final_$(date +%m%d)/best.pt" \
+  --keypoint-checkpoint "../runs_mod/keypoints_final_$(date +%m%d)/best.pt" \
   --output outputs/race_video \
   --device cuda \
   --resize-input
