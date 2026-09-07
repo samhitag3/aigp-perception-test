@@ -1,0 +1,28 @@
+Core trainable models
+- src/gateperception/models/segmentation.py: TemporalGateInstanceSegmenter
+- src/gateperception/models/keypoints.py: TemporalMaskKeypointNet
+
+Geometric pose stage
+- src/gateperception/geometry/pnp.py: planar IPPE PnP + LM refinement
+
+Canonical data
+- src/gateperception/data/canonical.py
+- src/gateperception/data/validate.py
+
+Training
+- scripts/train_segmentation.py
+- scripts/train_keypoints.py
+- scripts/tune_segmentation_optuna.py
+- scripts/tune_keypoints_optuna.py
+- scripts/make_final_config.py
+
+Inference/evaluation
+- scripts/infer_video.py
+- scripts/infer_dataset.py
+- scripts/evaluate_predictions.py
+
+Contracts/configuration
+- configs/camera.yaml
+- configs/gate_geometry.yaml
+- schemas/inference_frame.schema.json
+- docs/CONTRACT_NOTES.md

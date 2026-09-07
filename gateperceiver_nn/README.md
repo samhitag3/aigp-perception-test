@@ -116,6 +116,7 @@ cd gateperceiver_nn
 ```
 
 ```bash
+deactivate
 uv sync --extra tune --extra dev
 ```
 
@@ -267,8 +268,8 @@ uv run python scripts/evaluate_checkpoint.py \
 ```bash
 uv run python scripts/infer_video.py \
   --checkpoint "runs/final_gateperceiver_$(date +%m%d)/best.pt" \
-  --video ../data/test_videos/TODO.mp4 \
-  --output "outputs_nn/final_gateperceiver_$(date +%m%d)/TODO" \
+  --video ../data/refined_target/sim0721-10/video.mp4 \
+  --output "outputs_nn/final_gateperceiver_$(date +%m%d)/inference_sim0721-10.mp4" \
   --device cuda
 ```
 

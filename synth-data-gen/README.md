@@ -39,6 +39,7 @@ cd synth-data-gen
 CPU-only:
 
 ```bash
+deactivate
 uv venv
 source .venv/bin/activate
 uv pip install -e .
@@ -47,6 +48,7 @@ uv pip install -e .
 With optional GPU augmentation:
 
 ```bash
+deactivate
 uv venv
 source .venv/bin/activate
 uv pip install -e '.[gpu]'
