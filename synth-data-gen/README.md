@@ -43,7 +43,7 @@ The image is projectively warped onto a physical gate with:
 ## Install
 
 ```bash
-cd gate_synth_pipeline
+cd synth-data-gen
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -62,7 +62,7 @@ uv pip install -e .
 ```bash
 python scripts/generate.py \
   --config configs/smoke.yaml \
-  --gate-skin /absolute/path/to/SAMPLE_GATE_aigp.jpg
+  --gate-skin ../assets/gate_skinsSAMPLE_GATE_aigp.jpg
 ```
 
 Override output directory:
@@ -70,14 +70,14 @@ Override output directory:
 ```bash
 python scripts/generate.py \
   --config configs/smoke.yaml \
-  --gate-skin /absolute/path/to/SAMPLE_GATE_aigp.jpg \
-  --output /data/gate_perception_smoke_v1
+  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
+  --output "../data/synth_smoke$(date +%m%d)"
 ```
 
 ## Validate
 
 ```bash
-python scripts/validate_dataset.py /data/gate_perception_smoke_v1
+python scripts/validate_dataset.py "../data/synth_smoke$(date +%m%d)"
 ```
 
 ## Backgrounds
