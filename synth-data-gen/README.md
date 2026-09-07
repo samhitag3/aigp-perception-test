@@ -30,6 +30,12 @@ The data follows the canonical contract:
 
 ## Installation
 
+Navigate to the GateSynth folder:
+
+```bash
+cd synth-data-gen
+```
+
 CPU-only:
 
 ```bash

@@ -40,7 +40,8 @@ render:
   include_side_faces: true
   side_face_brightness: 0.55
   background_mode: mixed
-  backgrounds_dir: null
+  # backgrounds_dir: null
+  backgrounds_dir: ../assets/backgrounds
   procedural_background_probability: 0.50
 
 noise:
