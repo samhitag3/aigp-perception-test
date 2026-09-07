@@ -60,14 +60,6 @@ uv pip install -e .
 ```bash
 python3 scripts/generate.py \
   --config configs/smoke.yaml \
-  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg
-```
-
-Override output directory:
-
-```bash
-python3 scripts/generate.py \
-  --config configs/smoke.yaml \
   --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
   --output "../data/synth_smoke$(date +%m%d)"
 ```
