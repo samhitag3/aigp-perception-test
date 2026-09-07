@@ -113,13 +113,16 @@ The loader dynamically converts each integer ID into a separate binary target ma
 
 ```bash
 cd gateperceiver_nn
+```
+
+```bash
 uv sync --extra tune --extra dev
 ```
 
 Set your canonical Isaac-converted dataset path once:
 
 ```bash
-export DATASET_ROOT=/absolute/path/to/perception_dataset_v1
+export DATASET_ROOT=../data/synth_large_0906
 ```
 
 ## Validate the dataset first
@@ -158,7 +161,7 @@ Defaults:
 uv run python scripts/train.py \
   --config configs/cheap.yaml \
   --dataset-root "$DATASET_ROOT" \
-  --run-dir runs/cheap_gateperceiver \
+  --run-dir "../runs_nn/cheap_gateperceiver_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -172,7 +175,7 @@ Purpose: establish the untuned performance of the architecture on the complete t
 uv run python scripts/train.py \
   --config configs/baseline.yaml \
   --dataset-root "$DATASET_ROOT" \
-  --run-dir runs/baseline_gateperceiver \
+  --run-dir "../runs_nn/baseline_gateperceiver_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -192,7 +195,7 @@ Run the standard 30-trial search:
 uv run python scripts/tune_optuna.py \
   --config configs/optuna.yaml \
   --dataset-root "$DATASET_ROOT" \
-  --run-dir runs/optuna_gateperceiver \
+  --run-dir "../runs_nn/optuna_gateperceiver_$(date +%m%d)" \
   --device cuda \
   --n-trials 30
 ```
@@ -203,7 +206,7 @@ For an even cheaper first tuning pass:
 uv run python scripts/tune_optuna.py \
   --config configs/optuna.yaml \
   --dataset-root "$DATASET_ROOT" \
-  --run-dir runs/optuna_gateperceiver \
+  --run-dir "../runs_nn/optuna_gateperceiver_$(date +%m%d)" \
   --device cuda \
   --n-trials 10
 ```
@@ -226,9 +229,9 @@ Apply the best Optuna hyperparameters on top of the final full-training config:
 ```bash
 uv run python scripts/train.py \
   --config configs/final.yaml \
-  --overrides runs/optuna_gateperceiver/best_overrides.yaml \
+  --overrides "../runs_nn/optuna_gateperceiver_$(date +%m%d)/best_overrides.yaml" \
   --dataset-root "$DATASET_ROOT" \
-  --run-dir runs/final_gateperceiver \
+  --run-dir "../runs_nn/final_gateperceiver_$(date +%m%d)" \
   --device cuda
 ```
 
@@ -239,9 +242,9 @@ If you need to change only the final epoch budget:
 ```bash
 uv run python scripts/train.py \
   --config configs/final.yaml \
-  --overrides runs/optuna_gateperceiver/best_overrides.yaml \
+  --overrides "../runs_nn/optuna_gateperceiver_$(date +%m%d)/best_overrides.yaml" \
   --dataset-root "$DATASET_ROOT" \
-  --run-dir runs/final_gateperceiver \
+  --run-dir "../runs_nn/final_gateperceiver_$(date +%m%d)" \
   --device cuda \
   --epochs 100
 ```
@@ -252,20 +255,20 @@ Do not repeatedly use the test split during model development. Once the finalist
 
 ```bash
 uv run python scripts/evaluate_checkpoint.py \
-  --checkpoint runs/final_gateperceiver/best.pt \
+  --checkpoint "runs/final_gateperceive_$(date +%m%d)r/best.pt" \
   --dataset-root "$DATASET_ROOT" \
   --split test \
   --device cuda \
-  --output runs/final_gateperceiver/evaluation_test.json
+  --output "runs/final_gateperceiver_$(date +%m%d)/evaluation_test.json"
 ```
 
 # Video inference
 
 ```bash
 uv run python scripts/infer_video.py \
-  --checkpoint runs/final_gateperceiver/best.pt \
-  --video /path/to/race_video.mp4 \
-  --output outputs/race_video \
+  --checkpoint "runs/final_gateperceiver_$(date +%m%d)/best.pt" \
+  --video ../data/test_videos/TODO.mp4 \
+  --output "outputs_nn/final_gateperceiver_$(date +%m%d)/TODO" \
   --device cuda
 ```
 
