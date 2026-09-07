@@ -1,0 +1,109 @@
+seed: 42
+output_root: ./generated/gate_perception_smoke_v1
+dataset_id: gate_perception_smoke_v1
+schema_version: 1.0.0
+
+image:
+  width: 960
+  height: 540
+  jpeg_quality: 95
+
+camera:
+  fx_range: [620.0, 1050.0]
+  fy_scale_range: [0.98, 1.02]
+  principal_point_jitter_px: 8.0
+  near_clip_m: 0.20
+
+sequences:
+  count: 120
+  frames_min: 56
+  frames_max: 96
+  fps: 30.0
+  gates_min: 3
+  gates_max: 7
+  course_spacing_m: [5.0, 9.0]
+  lateral_gate_jitter_m: 2.0
+  vertical_gate_jitter_m: 0.8
+  gate_yaw_deg: [-38.0, 38.0]
+  gate_pitch_deg: [-16.0, 16.0]
+  gate_roll_deg: [-8.0, 8.0]
+  path_lateral_offset_m: 0.65
+  path_vertical_offset_m: 0.45
+  orientation_jitter_deg: 6.0
+
+split:
+  train: 0.80
+  validation: 0.10
+  test: 0.10
+
+render:
+  include_side_faces: true
+  side_face_brightness: 0.55
+  background_mode: mixed
+  backgrounds_dir: null
+  procedural_background_probability: 0.50
+
+noise:
+  tier_probabilities:
+    clean: 0.10
+    low: 0.30
+    medium: 0.40
+    high: 0.20
+
+  tiers:
+    clean:
+      brightness: [0.98, 1.02]
+      contrast: [0.98, 1.02]
+      saturation: [0.98, 1.02]
+      gamma: [0.98, 1.02]
+      gaussian_blur_sigma: [0.0, 0.15]
+      motion_blur_px: [0, 1]
+      gaussian_noise_std: [0.0, 1.0]
+      speckle_std: [0.0, 0.002]
+      jpeg_quality: [94, 98]
+      vignette_strength: [0.0, 0.05]
+      color_temp_shift: [-0.02, 0.02]
+      shadow_strength: [0.0, 0.04]
+      flare_strength: [0.0, 0.02]
+    low:
+      brightness: [0.85, 1.15]
+      contrast: [0.85, 1.18]
+      saturation: [0.85, 1.15]
+      gamma: [0.85, 1.15]
+      gaussian_blur_sigma: [0.0, 0.8]
+      motion_blur_px: [0, 5]
+      gaussian_noise_std: [0.0, 5.0]
+      speckle_std: [0.0, 0.015]
+      jpeg_quality: [86, 96]
+      vignette_strength: [0.0, 0.18]
+      color_temp_shift: [-0.08, 0.08]
+      shadow_strength: [0.0, 0.15]
+      flare_strength: [0.0, 0.08]
+    medium:
+      brightness: [0.65, 1.35]
+      contrast: [0.65, 1.40]
+      saturation: [0.65, 1.35]
+      gamma: [0.70, 1.35]
+      gaussian_blur_sigma: [0.0, 1.6]
+      motion_blur_px: [0, 11]
+      gaussian_noise_std: [0.0, 11.0]
+      speckle_std: [0.0, 0.035]
+      jpeg_quality: [72, 94]
+      vignette_strength: [0.0, 0.35]
+      color_temp_shift: [-0.16, 0.16]
+      shadow_strength: [0.0, 0.30]
+      flare_strength: [0.0, 0.18]
+    high:
+      brightness: [0.45, 1.60]
+      contrast: [0.45, 1.65]
+      saturation: [0.45, 1.55]
+      gamma: [0.55, 1.60]
+      gaussian_blur_sigma: [0.0, 2.8]
+      motion_blur_px: [0, 21]
+      gaussian_noise_std: [0.0, 20.0]
+      speckle_std: [0.0, 0.070]
+      jpeg_quality: [55, 90]
+      vignette_strength: [0.0, 0.55]
+      color_temp_shift: [-0.28, 0.28]
+      shadow_strength: [0.0, 0.50]
+      flare_strength: [0.0, 0.35]
