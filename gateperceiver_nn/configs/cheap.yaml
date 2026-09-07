@@ -1,0 +1,66 @@
+seed: 42
+
+data:
+  root: data/perception_dataset_v1
+  image_size: [180, 320]
+  window_size: 2
+  stride: 2
+  num_workers: 4
+  max_train_samples: 1200
+  max_validation_samples: 250
+  augmentation:
+    crop_scale_min: 0.82
+    crop_scale_max: 1.0
+    brightness_p: 0.5
+    brightness_range: [0.65, 1.35]
+    contrast_p: 0.5
+    contrast_range: [0.65, 1.35]
+    color_p: 0.3
+    color_range: [0.8, 1.2]
+    blur_p: 0.25
+    blur_radius: [0.2, 1.2]
+    noise_p: 0.30
+    noise_sigma: [2.0, 10.0]
+    jpeg_p: 0.20
+    jpeg_quality: [55, 90]
+
+model:
+  backbone: resnet18
+  pretrained_backbone: false
+  d_model: 128
+  nheads: 4
+  temporal_layers: 1
+  decoder_layers: 2
+  num_queries: 8
+  track_dim: 32
+  keypoint_margin: 0.5
+
+training:
+  epochs: 4
+  batch_size: 4
+  optimizer: adamw
+  lr: 0.0003
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  amp: true
+
+loss:
+  match_object: 1.0
+  match_box: 2.0
+  match_mask: 2.0
+  match_keypoint: 1.0
+  object_pos_weight: 2.0
+  track_negative_margin: 0.2
+  object_weight: 1.0
+  mask_weight: 3.0
+  box_weight: 2.0
+  giou_weight: 1.0
+  keypoint_weight: 2.0
+  visibility_weight: 0.5
+  translation_weight: 2.0
+  rotation_weight: 1.0
+  track_weight: 0.25
+
+decode:
+  detection_threshold: 0.50
+  mask_threshold: 0.50
