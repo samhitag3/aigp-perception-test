@@ -1,6 +1,6 @@
 seed: 42
 dataset:
-  root: ../data/perception_dataset_v1
+  root: ../data/synth_large_0906
   width: 640
   height: 360
   train_splits: [train]

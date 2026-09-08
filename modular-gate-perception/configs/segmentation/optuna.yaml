@@ -2,7 +2,7 @@ seed: 42
 optuna:
   study_name: temporal_gate_instance_segmentation
 dataset:
-  root: ../data/perception_dataset_v1
+  root: ../data/synth_large_0906
   width: 640
   height: 360
   train_splits: [train]
