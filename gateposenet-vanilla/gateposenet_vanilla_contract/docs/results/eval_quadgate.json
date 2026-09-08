@@ -1,0 +1,14 @@
+{
+  "GateNet": {
+    "quadgate_detect_rate": 1.0,
+    "normal_err_deg_median": 19.364,
+    "normal_err_deg_mean": 23.537,
+    "frames": 150
+  },
+  "YOLO26": {
+    "quadgate_detect_rate": 1.0,
+    "normal_err_deg_median": 27.085,
+    "normal_err_deg_mean": 30.791,
+    "frames": 150
+  }
+}

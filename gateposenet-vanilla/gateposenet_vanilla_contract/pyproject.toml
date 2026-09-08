@@ -1,0 +1,59 @@
+[project]
+name = "gatenet"
+version = "0.1.0"
+description = "Lightweight U-Net gate segmentation (GateNet) + QuAdGate perception for autonomous drone racing"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.2",
+    "numpy>=1.24",
+    "opencv-python>=4.6",
+    "pyyaml>=6.0",
+    "tqdm>=4.64",
+    "tensorboard>=2.12",
+    "optuna>=4.0",
+]
+
+[project.optional-dependencies]
+export = ["onnx>=1.15", "onnxruntime>=1.17"]
+# Deployment/inference (deploy/): ONNX export + onnxruntime fallback runtime.
+# onnxruntime >=1.24 dropped Python 3.10 wheels (that was the earlier "needs
+# >=3.11" install failure); 1.23.2 is the last cp310 release and is verified
+# working in this venv (onnxruntime-gpu==1.23.2 likewise, for the CUDA EP).
+# The <1.24 ceiling can go once the venv moves to >=3.11.
+# tensorrt + cuda-python/pycuda are deliberately NOT dependencies — they are
+# platform installs (JetPack apt packages on Jetson; on x86 dev boxes:
+#   uv pip install "tensorrt-cu12<11" "cuda-python<13"
+# — plain `tensorrt` resolves to -cu13, which needs a CUDA 13 driver).
+# See deploy/README.md.
+deploy = [
+    "onnx>=1.15",
+    "onnxruntime>=1.17,<1.24",
+]
+dev = ["pytest>=7.0"]
+# YOLO26 / YOLOE backends (Ultralytics). YOLO26 + YOLOE require ultralytics>=8.4.
+yolo = ["ultralytics>=8.4.0"]
+
+# ---------------------------------------------------------------------------
+# GPU / uv configuration
+# ---------------------------------------------------------------------------
+# On Linux (the remote GPU server) torch is pulled from the PyTorch CUDA 12.4
+# wheel index; on macOS / other platforms it falls back to the default CPU
+# wheels so local development still works. To target a different CUDA version,
+# change the index URL below (e.g. .../whl/cu121) and the marker stays the same.
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.setuptools]
+packages = ["gatenet", "gateposenet", "gatetest", "perception", "finetune", "finetune.backends", "evaluation", "deploy"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

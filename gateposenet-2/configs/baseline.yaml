@@ -1,0 +1,67 @@
+seed: 42
+camera:
+  source_width: 640
+  source_height: 360
+  fx: 320.0
+  fy: 320.0
+  cx: 320.0
+  cy: 180.0
+  asserted_hfov_deg: 90.0
+  model_width: 320
+  model_height: 192
+model:
+  d_model: 128
+  num_queries: 8
+  decoder_layers: 2
+  decoder_heads: 4
+  track_dim: 64
+  num_visibility_classes: 5
+  num_keypoints: 8
+  ego_dropout_probability: 0.25
+  input_channels: 3
+training:
+  epochs: 60
+  batch_size: 8
+  window_size: 8
+  num_workers: 8
+  amp: true
+  grad_clip_norm: 1.0
+  checkpoint_metric: target_position_median_m
+  checkpoint_mode: min
+  early_stopping_patience: 12
+optimizer:
+  name: adamw
+  lr: 0.0003
+  weight_decay: 0.0001
+scheduler:
+  name: cosine
+  warmup_epochs: 2
+loss:
+  w_presence: 1.0
+  w_target: 1.0
+  w_mask_bce: 2.0
+  w_mask_dice: 3.0
+  w_box: 1.0
+  w_keypoint: 5.0
+  w_keypoint_confidence: 0.5
+  w_keypoint_state: 1.0
+  w_position: 5.0
+  w_rotation: 2.0
+  w_depth: 0.5
+  w_visible_fraction: 0.5
+  w_reprojection: 2.0
+  w_track: 0.25
+  blind_scale: 0.3
+decoder:
+  object_confidence_threshold: 0.5
+  mask_threshold: 0.5
+  min_area_px: 20
+augmentation:
+  enabled: true
+  brightness: 0.20
+  contrast: 0.20
+  saturation: 0.15
+  gamma: 0.15
+  gaussian_noise_std: 0.02
+  blur_probability: 0.15
+  jpeg_probability: 0.10

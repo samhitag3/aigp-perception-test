@@ -1,0 +1,56 @@
+# GatePoseNet-MG: multi-gate query-transformer head (per-gate masks +
+# keypoints + 6-DoF pose + target scoring) on the v3 maneuver datasets.
+name: gateposenet_mg
+
+model:
+  in_channels: 3
+  base_channels: [16, 32, 64, 128, 256]
+  width_factor: 2
+  n_queries: 8
+  d_model: 128
+  n_dec_layers: 2
+  n_heads: 4
+
+data:
+  train_roots:
+    - ../sam3-autolabeler-private/data/synthetic_output/aigp_traj_train
+  val_roots:
+    - ../sam3-autolabeler-private/data/synthetic_output/aigp_traj_val
+  window: 8
+  stride: 4
+  val_stride: 8
+  height: 192
+  width: 320
+  native_width: 640
+  native_height: 360
+  pose_sup_max_m: 25.0
+  ego_dropout: 0.25
+
+train:
+  epochs: 60
+  batch_size: 12
+  lr: 0.0007
+  weight_decay: 0.01
+  num_workers: 8
+  seed: 42
+
+schedule:
+  milestones: [24, 44, 54]
+  gamma: 0.31622776601
+
+loss:
+  w_presence: 2.0
+  w_mask: 2.0
+  w_corners: 5.0
+  w_corner_in: 0.5
+  w_center: 5.0
+  w_position: 2.0
+  w_depth: 2.0
+  w_rot: 2.0
+  w_visfrac: 0.5
+  w_target: 1.0
+  blind_scale: 0.3
+  symmetry_aware: true
+
+output:
+  dir: runs/gateposenet_mg

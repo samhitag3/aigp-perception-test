@@ -1,0 +1,66 @@
+# GateNet — A2RL / MonoRace authoritative recipe (384x384, f=4).
+# This reproduces the network that won the 2025 A2RL competition.
+name: gatenet_a2rl
+
+model:
+  in_channels: 3
+  base_channels: [16, 32, 64, 128, 256]   # nominal widths (the f=4 model)
+  width_factor: 4                          # f; widths = base * f / 4
+  deep_supervision: true
+  # channels: [16, 32, 64, 128, 256]       # uncomment to set widths explicitly
+
+data:
+  # mode "single": one images/+masks/ folder produced by sam3-autolabeler.
+  # mode "merged": mix a synthetic and a real folder at `ratio` (MonoRace 3500:500).
+  mode: merged
+  synth_root: data/synth     # images/ + masks/  (from upstream data pipeline)
+  real_root: data/real       # images/ + masks/  (from sam3-autolabeler)
+  ratio: [3500, 500]         # synthetic : real sampling ratio
+  root: data/train           # used when mode == single
+  height: 384
+  width: 384
+  val_frac: 0.1
+  mask_suffix: ""
+
+train:
+  epochs: 100
+  batch_size: 16
+  optimizer: adamw
+  lr: 0.001                  # base LR -> 1e-5 after the 4 scheduled drops
+  weight_decay: 0.01         # not specified in the paper; AdamW default
+  num_workers: 4
+  amp: true
+  seed: 42
+  log_interval: 20
+
+schedule:
+  milestones: [10, 33, 66, 90]
+  gamma: 0.31622776601        # sqrt(0.1)
+
+loss:
+  bce_weight: 2.0
+  scale_weights: [4.0, 2.0, 1.0, 1.0, 1.0]
+
+augment:
+  rotate_deg: 15.0
+  translate: 0.1
+  scale: [0.8, 1.2]
+  hsv: [12.0, 0.4, 0.4]      # (hue deg, sat frac, val frac)
+  motion_blur: [5, 15]       # kernel px range
+  motion_blur_p: 0.5
+  gauss_noise_std: 12.0
+  gauss_noise_p: 0.5
+  hflip_p: 0.0
+
+infer:
+  threshold: 0.5
+  out_size: null             # deploy uses the full-res highest output (y0)
+
+camera:                       # for perception demo / PnP (override with your calib)
+  fx: 150.0
+  fy: 150.0
+  cx: 192.0
+  cy: 192.0
+
+output:
+  dir: runs/gatenet_a2rl

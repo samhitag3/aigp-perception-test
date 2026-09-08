@@ -1,0 +1,66 @@
+seed: 42
+
+data:
+  root: ../data/synth_large_0906
+  image_size: [360, 640]
+  window_size: 4
+  stride: 1
+  num_workers: 6
+  max_train_samples: null
+  max_validation_samples: null
+  augmentation:
+    crop_scale_min: 0.75
+    crop_scale_max: 1.0
+    brightness_p: 0.55
+    brightness_range: [0.55, 1.45]
+    contrast_p: 0.55
+    contrast_range: [0.55, 1.45]
+    color_p: 0.35
+    color_range: [0.7, 1.3]
+    blur_p: 0.30
+    blur_radius: [0.2, 1.8]
+    noise_p: 0.35
+    noise_sigma: [2.0, 14.0]
+    jpeg_p: 0.25
+    jpeg_quality: [45, 90]
+
+model:
+  backbone: resnet34
+  pretrained_backbone: true
+  d_model: 256
+  nheads: 8
+  temporal_layers: 2
+  decoder_layers: 3
+  num_queries: 12
+  track_dim: 64
+  keypoint_margin: 0.5
+
+training:
+  epochs: 25
+  batch_size: 2
+  optimizer: adamw
+  lr: 0.00015
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  amp: true
+
+loss:
+  match_object: 1.0
+  match_box: 2.0
+  match_mask: 2.5
+  match_keypoint: 1.5
+  object_pos_weight: 2.0
+  track_negative_margin: 0.2
+  object_weight: 1.0
+  mask_weight: 3.0
+  box_weight: 2.0
+  giou_weight: 1.0
+  keypoint_weight: 2.0
+  visibility_weight: 0.75
+  translation_weight: 2.0
+  rotation_weight: 1.0
+  track_weight: 0.35
+
+decode:
+  detection_threshold: 0.50
+  mask_threshold: 0.50

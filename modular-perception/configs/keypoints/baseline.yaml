@@ -1,0 +1,36 @@
+seed: 42
+dataset:
+  root: ../data/synth_large_0906
+  train_splits: [train]
+  val_splits: [validation]
+  max_train_sequences: null
+  max_val_sequences: null
+model:
+  window_size: 7
+  hidden_dim: 128
+  crop_size: [192, 192]
+  crop_padding: 0.35
+augmentation:
+  enabled: true
+  crop_scale: [0.88, 1.15]
+  crop_center_jitter_fraction: 0.08
+  brightness: [0.75, 1.25]
+  contrast: [0.75, 1.25]
+  gamma: [0.88, 1.12]
+  noise_std_normalized: [0.0, 0.04]
+  mask_corruption_probability: 0.45
+  mask_morph_max_kernel: 5
+  mask_dropout_fraction: 0.20
+training:
+  epochs: 25
+  batch_size: 32
+  val_batch_size: 32
+  num_workers: 6
+  learning_rate: 0.0002
+  weight_decay: 0.0001
+  amp: true
+  grad_clip_norm: 1.0
+loss:
+  coord_weight: 5.0
+  visibility_weight: 1.0
+  smooth_l1_beta: 0.05

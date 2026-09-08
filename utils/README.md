@@ -1,3 +1,12 @@
+## convert_isaac_to_gate_contract.py
+```bash
+uv run --with numpy --with pillow \
+  python utils/convert_isaac_to_gate_contract.py \
+  data/raw_isaac_0908 \
+  --output data/refined_isaac_0908 \
+  --overwrite
+```
+
 ## display_gates_in_mask.ipynb
 replace mask path & run notebook
 

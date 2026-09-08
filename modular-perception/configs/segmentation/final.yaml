@@ -1,0 +1,52 @@
+seed: 42
+dataset:
+  root: ../data/synth_large_0906
+  width: 640
+  height: 360
+  # Full final training uses the entire fixed 80% training split; validation/test remain held out.
+  train_splits: [train]
+  val_splits: [validation]
+  max_train_sequences: null
+  max_val_sequences: null
+model:
+  window_size: 5
+  num_queries: 10
+  hidden_dim: 128
+  track_dim: 64
+  decoder_layers: 3
+  nheads: 4
+  pretrained_backbone: true
+training:
+  epochs: 60
+  batch_size: 4
+  val_batch_size: 4
+  num_workers: 6
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  amp: true
+  grad_clip_norm: 1.0
+augmentation:
+  enabled: true
+  brightness: [0.65, 1.35]
+  contrast: [0.65, 1.35]
+  saturation: [0.75, 1.25]
+  hue_shift_deg: [-8.0, 8.0]
+  gamma: [0.85, 1.15]
+  zoom: [0.90, 1.12]
+  rotation_deg: [-4.0, 4.0]
+  translation_fraction: [0.05, 0.05]
+  blur_probability: 0.35
+  blur_sigma: [0.0, 2.0]
+  noise_std: [0.0, 15.0]
+loss:
+  object_weight: 1.0
+  object_pos_weight: 2.0
+  mask_bce_weight: 2.0
+  mask_dice_weight: 3.0
+  box_weight: 1.0
+  track_weight: 0.25
+  track_margin: 0.2
+  cost_mask_bce: 1.0
+  cost_mask_dice: 2.0
+  cost_box: 1.0
+  cost_object: 0.5
