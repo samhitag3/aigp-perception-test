@@ -4,14 +4,31 @@ dataset_id: gate_perception_large_v1
 schema_version: 1.0.0
 
 image:
-  width: 1280
-  height: 720
+image:
+  width: 640
+  height: 360
   jpeg_quality: 93
 
 camera:
-  fx_range: [700.0, 1200.0]
-  fy_scale_range: [0.97, 1.03]
-  principal_point_jitter_px: 12.0
+  model: pinhole
+
+  width: 640
+  height: 360
+
+  fx: 320.0
+  fy: 320.0
+  cx: 320.0
+  cy: 180.0
+
+  distortion:
+    enabled: false
+
+  randomization:
+    resolution: false
+    focal_length: false
+    principal_point: false
+    distortion: false
+
   near_clip_m: 0.20
 
 sequences:

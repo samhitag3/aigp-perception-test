@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import time
 
+import cv2
 import numpy as np
 import torch
 from PIL import Image
@@ -57,7 +58,11 @@ def main():
         hist = deque(maxlen=seg_window)
         with open(seq_out / "frames.jsonl", "w", encoding="utf-8") as fout:
             for row in index.sequences[sid]:
-                rgb_np = _load_rgb(index.frame_path(sid, row["files"]["rgb"]))
+                rgb_src = _load_rgb(index.frame_path(sid, row["files"]["rgb"]))
+                if rgb_src.shape[:2] != (H, W):
+                    rgb_np = cv2.resize(rgb_src, (W, H), interpolation=cv2.INTER_AREA)
+                else:
+                    rgb_np = rgb_src
                 rgb_t = torch.from_numpy(rgb_np.copy()).permute(2,0,1).float()/255.0
                 hist.append(rgb_t); frames=list(hist)
                 while len(frames) < seg_window: frames.insert(0, frames[0])

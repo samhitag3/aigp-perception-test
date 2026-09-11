@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse, csv, json, math
 from pathlib import Path
 from collections import defaultdict
+import cv2
 import numpy as np
 from PIL import Image
 from scipy.optimize import linear_sum_assignment
@@ -37,9 +38,15 @@ def main():
         preds={int(r["frame_index"]):r for r in read_jsonl(pred_root/sid/"frames.jsonl")}
         for gt in idx.sequences[sid]:
             fi=int(gt["frame_index"]); pr=preds.get(fi,{"instances":[],"num_gate_instances":0})
-            gtmask=np.asarray(Image.open(idx.frame_path(sid,gt["files"]["instance_mask"])))
+            gtmask_src=np.asarray(Image.open(idx.frame_path(sid,gt["files"]["instance_mask"])))
             pmask_path=pred_root/sid/pr.get("instance_mask","")
-            pmask=np.asarray(Image.open(pmask_path)) if pmask_path.exists() else np.zeros_like(gtmask)
+            pmask=np.asarray(Image.open(pmask_path)) if pmask_path.exists() else np.zeros_like(gtmask_src)
+            src_h,src_w=gtmask_src.shape[:2]; pred_h,pred_w=pmask.shape[:2]
+            sx,sy=pred_w/max(1,src_w),pred_h/max(1,src_h)
+            if (src_h,src_w)!=(pred_h,pred_w):
+                gtmask=cv2.resize(gtmask_src.astype(np.int32),(pred_w,pred_h),interpolation=cv2.INTER_NEAREST).astype(gtmask_src.dtype)
+            else:
+                gtmask=gtmask_src
             gu=gtmask>0; pu=pmask>0
             pixel_tp+=np.logical_and(gu,pu).sum(); pixel_fp+=np.logical_and(~gu,pu).sum(); pixel_fn+=np.logical_and(gu,~pu).sum(); pixel_tn+=np.logical_and(~gu,~pu).sum()
             gt_gates=[g for g in gt.get("gates",[]) if g.get("mask_id") is not None and np.any(gtmask==int(g["mask_id"]))]
@@ -60,14 +67,19 @@ def main():
                 matched_instances+=1; matched_gt.add(i); inst_ious.append(miou)
                 g,p=gt_gates[i],pred_gates[j]
                 box=g.get("bounding_boxes",{}).get("amodal_xyxy_px") or g.get("bounding_boxes",{}).get("visible_xyxy_px")
-                diag=math.hypot(float(box[2]-box[0]),float(box[3]-box[1])) if box else math.hypot(gtmask.shape[1],gtmask.shape[0])
+                if box:
+                    box_eval=[float(box[0])*sx,float(box[1])*sy,float(box[2])*sx,float(box[3])*sy]
+                    diag=math.hypot(box_eval[2]-box_eval[0],box_eval[3]-box_eval[1])
+                else:
+                    diag=math.hypot(gtmask.shape[1],gtmask.shape[0])
                 per_k=[]
                 if p.get("keypoints"):
                     for name in KEYPOINT_ORDER:
                         gr=g.get("keypoints_2d",{}).get(name,{}); pp=p["keypoints"].get(name,{})
                         xygt=gr.get("projected_px"); xyp=pp.get("xy_px")
                         if gr.get("projection_valid",False) and xygt is not None and xyp is not None:
-                            e=float(np.linalg.norm(np.asarray(xyp)-np.asarray(xygt))); n=e/max(diag,1e-6)
+                            xygt_eval=np.asarray([float(xygt[0])*sx,float(xygt[1])*sy],dtype=float)
+                            e=float(np.linalg.norm(np.asarray(xyp,dtype=float)-xygt_eval)); n=e/max(diag,1e-6)
                             kp_errors.append(e); kp_norm.append(n); per_k.append(e); pck_total+=1
                             for th in (0.01,0.02,0.05,0.10): pck_counts[th]+=int(n<=th)
                             st=gr.get("visibility_state");

@@ -159,76 +159,503 @@ pretrained_backbone: false
 
 in the segmentation config.
 
-## Point the configs at the dataset
+## Experiment data layout
 
-The example configs use:
+This repository is configured for two controlled training tracks:
 
-```yaml
-dataset:
-  root: ../data/synth_large_0906
+```text
+ISAAC ONLY
+  ../data/refined_isaac_0908
+
+SYNTHETIC + ISAAC
+  ../data/synth_large_0906
+  ../data/refined_isaac_0908
 ```
 
-Change this once to the actual canonical dataset root if necessary. Every model reads the same folder.
+The combined track reads both canonical dataset roots directly. It does **not** require copying or merging the datasets into a third folder.
 
-Validate the dataset before training:
+### Fixed reproducibility rules
+
+Every supplied experiment config uses:
+
+```text
+seed = 42
+sequence-selection seed = 42
+split unit = complete sequence / trajectory
+validation = full fixed Isaac validation split
+final comparison = same untouched Isaac test split
+```
+
+Training fractions are selected **per source**. The sequence IDs are sorted, deterministically permuted with seed 42, and the first `ceil(N * fraction)` sequences are selected.
+
+Because every stage uses the same permutation:
+
+```text
+cheap 15% subset  ⊂  baseline/Optuna 50% subset  ⊂  final 100% split
+```
+
+For the combined track, selection is performed independently inside each source. Therefore the Isaac 15%/50% subsets in the combined runs are exactly the same Isaac subsets used by the Isaac-only runs. The combined runs simply add the corresponding deterministic synthetic subset.
+
+Only the **training split** is subsampled. Validation is always 100% of the fixed Isaac validation sequences so validation metrics remain directly comparable across all runs.
+
+### Experiment budgets
+
+| Stage | Train split used | Epochs | Optuna trials |
+|---|---:|---:|---:|
+| Cheap | 15% | 8 | — |
+| Baseline | 50% | 30 | — |
+| Optuna | same 50% as baseline | 15 / trial | 20 |
+| Final | 100% | 60 | — |
+
+The legacy configs under `configs/segmentation/` and `configs/keypoints/` now point to the **Isaac-only** version of this protocol. Explicit two-track configs are under `configs/experiments/`.
+
+---
+
+# Complete CLI workflow
+
+Run everything below from the repository root.
+
+## 0. Environment, date tag, and output directories
+
+```bash
+uv sync
+
+DATE=$(date +%m%d)
+mkdir -p ../runs_mod ../outputs_mod
+
+uv run python scripts/inspect_camera.py
+```
+
+With September 8, `DATE` becomes `0908`, so run/output directories end in `_0908`.
+
+## 1. Validate both canonical datasets
+
+```bash
+uv run python -m gateperception.data.validate \
+  --dataset ../data/refined_isaac_0908
+```
 
 ```bash
 uv run python -m gateperception.data.validate \
   --dataset ../data/synth_large_0906
 ```
 
-## Training strategy
+The segmentation loader accepts canonical source images larger than 640x360 and converts them to the calibrated model/deployment resolution. RGB uses area downsampling and integer instance masks use nearest-neighbor interpolation, preserving `0,1,2,...` instance IDs.
 
-The supplied configs implement the funnel discussed for the time-constrained model search:
+## 2. Optional but recommended: inspect the exact deterministic subsets
 
-```text
-cheap smoke training
-       |
-       v
-full baseline
-       |
-       v
-Optuna on promising model
-       |
-       v
-merge tuned hyperparameters into final schedule
-       |
-       v
-final full training on the entire fixed 80% train split
-       |
-       v
-one-time evaluation on untouched 10% test split
+### Isaac-only cheap 15%
+
+```bash
+uv run python scripts/inspect_dataset_selection.py \
+  --config configs/experiments/isaac/segmentation/cheap.yaml \
+  --output "../runs_mod/isaac_cheap_selection_${DATE}.json"
 ```
 
-The `validation` and `test` sequences are never used as final-training examples. "Full dataset" below means the full fixed **training split**, not train+validation+test leakage.
+### Isaac-only baseline/Optuna 50%
+
+```bash
+uv run python scripts/inspect_dataset_selection.py \
+  --config configs/experiments/isaac/segmentation/baseline.yaml \
+  --output "../runs_mod/isaac_50pct_selection_${DATE}.json"
+```
+
+### Combined cheap 15% per source
+
+```bash
+uv run python scripts/inspect_dataset_selection.py \
+  --config configs/experiments/combined/segmentation/cheap.yaml \
+  --output "../runs_mod/combined_cheap_selection_${DATE}.json"
+```
+
+### Combined baseline/Optuna 50% per source
+
+```bash
+uv run python scripts/inspect_dataset_selection.py \
+  --config configs/experiments/combined/segmentation/baseline.yaml \
+  --output "../runs_mod/combined_50pct_selection_${DATE}.json"
+```
+
+Segmentation and keypoint configs use the same roots, fractions, and selection seed, so they select the same sequence subsets.
 
 ---
 
-# 1. Cheap training
+# Track A — Isaac-only
 
-Use this first to verify data compatibility, loss behavior, GPU memory, and whether the architecture learns anything at all.
+Training source:
+
+```text
+../data/refined_isaac_0908
+```
+
+## A1. Cheap — 15%, 8 epochs
 
 ### Segmentation
 
 ```bash
 uv run python scripts/train_segmentation.py \
-  --config configs/segmentation/cheap.yaml \
-  --run-dir "../runs_mod/seg_cheap_$(date +%m%d)" \
+  --config configs/experiments/isaac/segmentation/cheap.yaml \
+  --run-dir "../runs_mod/isaac_seg_cheap_${DATE}" \
   --device cuda
 ```
 
 ### Keypoints
 
-The keypoint model trains independently from GT instance masks, so it can run before segmentation training is complete.
-
 ```bash
 uv run python scripts/train_keypoints.py \
-  --config configs/keypoints/cheap.yaml \
-  --run-dir "../runs_mod/keypoints_cheap_$(date +%m%d)" \
+  --config configs/experiments/isaac/keypoints/cheap.yaml \
+  --run-dir "../runs_mod/isaac_keypoints_cheap_${DATE}" \
   --device cuda
 ```
 
-Each run automatically produces:
+## A2. Baseline — 50%, 30 epochs
+
+### Segmentation
+
+```bash
+uv run python scripts/train_segmentation.py \
+  --config configs/experiments/isaac/segmentation/baseline.yaml \
+  --run-dir "../runs_mod/isaac_seg_baseline_${DATE}" \
+  --device cuda
+```
+
+### Keypoints
+
+```bash
+uv run python scripts/train_keypoints.py \
+  --config configs/experiments/isaac/keypoints/baseline.yaml \
+  --run-dir "../runs_mod/isaac_keypoints_baseline_${DATE}" \
+  --device cuda
+```
+
+## A3. Optuna — same 50%, 20 trials x 15 epochs
+
+Optuna itself is seeded with 42. Every trial also trains with seed 42, so differences between trials come from the proposed hyperparameters rather than a different random training seed.
+
+### Segmentation tuning
+
+```bash
+uv run python scripts/tune_segmentation_optuna.py \
+  --config configs/experiments/isaac/segmentation/optuna.yaml \
+  --study-dir "../runs_mod/isaac_seg_optuna_${DATE}" \
+  --init-checkpoint "../runs_mod/isaac_seg_baseline_${DATE}/best.pt" \
+  --device cuda \
+  --n-trials 20
+```
+
+### Keypoint tuning
+
+```bash
+uv run python scripts/tune_keypoints_optuna.py \
+  --config configs/experiments/isaac/keypoints/optuna.yaml \
+  --study-dir "../runs_mod/isaac_keypoints_optuna_${DATE}" \
+  --init-checkpoint "../runs_mod/isaac_keypoints_baseline_${DATE}/best.pt" \
+  --device cuda \
+  --n-trials 20
+```
+
+## A4. Build tuned 100%-data final configs
+
+Do not train directly from Optuna's `best_config.yaml`; that file intentionally retains the 50% / 15-epoch tuning budget. Merge only its tuned hyperparameters into the 100% / 60-epoch final config.
+
+### Segmentation
+
+```bash
+uv run python scripts/make_final_config.py \
+  --base-final configs/experiments/isaac/segmentation/final.yaml \
+  --tuned "../runs_mod/isaac_seg_optuna_${DATE}/best_config.yaml" \
+  --kind segmentation \
+  --output "../runs_mod/isaac_seg_optuna_${DATE}/final_config.yaml"
+```
+
+### Keypoints
+
+```bash
+uv run python scripts/make_final_config.py \
+  --base-final configs/experiments/isaac/keypoints/final.yaml \
+  --tuned "../runs_mod/isaac_keypoints_optuna_${DATE}/best_config.yaml" \
+  --kind keypoints \
+  --output "../runs_mod/isaac_keypoints_optuna_${DATE}/final_config.yaml"
+```
+
+## A5. Final — 100% train split, 60 epochs
+
+The commands below initialize from the corresponding 30-epoch baseline checkpoint, then perform the requested **60 full-data epochs**. Both experiment tracks use this same protocol.
+
+### Segmentation
+
+```bash
+uv run python scripts/train_segmentation.py \
+  --config "../runs_mod/isaac_seg_optuna_${DATE}/final_config.yaml" \
+  --init-checkpoint "../runs_mod/isaac_seg_baseline_${DATE}/best.pt" \
+  --run-dir "../runs_mod/isaac_seg_final_${DATE}" \
+  --device cuda
+```
+
+### Keypoints
+
+```bash
+uv run python scripts/train_keypoints.py \
+  --config "../runs_mod/isaac_keypoints_optuna_${DATE}/final_config.yaml" \
+  --init-checkpoint "../runs_mod/isaac_keypoints_baseline_${DATE}/best.pt" \
+  --run-dir "../runs_mod/isaac_keypoints_final_${DATE}" \
+  --device cuda
+```
+
+## A6. Final end-to-end inference on untouched Isaac test split
+
+```bash
+uv run python scripts/infer_dataset.py \
+  --dataset ../data/refined_isaac_0908 \
+  --split test \
+  --seg-checkpoint "../runs_mod/isaac_seg_final_${DATE}/best.pt" \
+  --keypoint-checkpoint "../runs_mod/isaac_keypoints_final_${DATE}/best.pt" \
+  --camera-config configs/camera.yaml \
+  --gate-geometry configs/gate_geometry.yaml \
+  --output "../outputs_mod/isaac_test_predictions_${DATE}" \
+  --device cuda
+```
+
+```bash
+uv run python scripts/evaluate_predictions.py \
+  --dataset ../data/refined_isaac_0908 \
+  --split test \
+  --predictions "../outputs_mod/isaac_test_predictions_${DATE}" \
+  --output "../outputs_mod/isaac_test_evaluation_${DATE}"
+```
+
+---
+
+# Track B — Synthetic + Isaac
+
+Training sources:
+
+```text
+../data/synth_large_0906
++
+../data/refined_isaac_0908
+```
+
+Validation remains the same full Isaac validation split used by Track A.
+
+## B1. Cheap — 15% of each source, 8 epochs
+
+### Segmentation
+
+```bash
+uv run python scripts/train_segmentation.py \
+  --config configs/experiments/combined/segmentation/cheap.yaml \
+  --run-dir "../runs_mod/combined_seg_cheap_${DATE}" \
+  --device cuda
+```
+
+### Keypoints
+
+```bash
+uv run python scripts/train_keypoints.py \
+  --config configs/experiments/combined/keypoints/cheap.yaml \
+  --run-dir "../runs_mod/combined_keypoints_cheap_${DATE}" \
+  --device cuda
+```
+
+## B2. Baseline — 50% of each source, 30 epochs
+
+### Segmentation
+
+```bash
+uv run python scripts/train_segmentation.py \
+  --config configs/experiments/combined/segmentation/baseline.yaml \
+  --run-dir "../runs_mod/combined_seg_baseline_${DATE}" \
+  --device cuda
+```
+
+### Keypoints
+
+```bash
+uv run python scripts/train_keypoints.py \
+  --config configs/experiments/combined/keypoints/baseline.yaml \
+  --run-dir "../runs_mod/combined_keypoints_baseline_${DATE}" \
+  --device cuda
+```
+
+## B3. Optuna — same 50% of each source, 20 trials x 15 epochs
+
+### Segmentation tuning
+
+```bash
+uv run python scripts/tune_segmentation_optuna.py \
+  --config configs/experiments/combined/segmentation/optuna.yaml \
+  --study-dir "../runs_mod/combined_seg_optuna_${DATE}" \
+  --init-checkpoint "../runs_mod/combined_seg_baseline_${DATE}/best.pt" \
+  --device cuda \
+  --n-trials 20
+```
+
+### Keypoint tuning
+
+```bash
+uv run python scripts/tune_keypoints_optuna.py \
+  --config configs/experiments/combined/keypoints/optuna.yaml \
+  --study-dir "../runs_mod/combined_keypoints_optuna_${DATE}" \
+  --init-checkpoint "../runs_mod/combined_keypoints_baseline_${DATE}/best.pt" \
+  --device cuda \
+  --n-trials 20
+```
+
+## B4. Build tuned 100%-data final configs
+
+### Segmentation
+
+```bash
+uv run python scripts/make_final_config.py \
+  --base-final configs/experiments/combined/segmentation/final.yaml \
+  --tuned "../runs_mod/combined_seg_optuna_${DATE}/best_config.yaml" \
+  --kind segmentation \
+  --output "../runs_mod/combined_seg_optuna_${DATE}/final_config.yaml"
+```
+
+### Keypoints
+
+```bash
+uv run python scripts/make_final_config.py \
+  --base-final configs/experiments/combined/keypoints/final.yaml \
+  --tuned "../runs_mod/combined_keypoints_optuna_${DATE}/best_config.yaml" \
+  --kind keypoints \
+  --output "../runs_mod/combined_keypoints_optuna_${DATE}/final_config.yaml"
+```
+
+## B5. Final — 100% of both training splits, 60 epochs
+
+### Segmentation
+
+```bash
+uv run python scripts/train_segmentation.py \
+  --config "../runs_mod/combined_seg_optuna_${DATE}/final_config.yaml" \
+  --init-checkpoint "../runs_mod/combined_seg_baseline_${DATE}/best.pt" \
+  --run-dir "../runs_mod/combined_seg_final_${DATE}" \
+  --device cuda
+```
+
+### Keypoints
+
+```bash
+uv run python scripts/train_keypoints.py \
+  --config "../runs_mod/combined_keypoints_optuna_${DATE}/final_config.yaml" \
+  --init-checkpoint "../runs_mod/combined_keypoints_baseline_${DATE}/best.pt" \
+  --run-dir "../runs_mod/combined_keypoints_final_${DATE}" \
+  --device cuda
+```
+
+## B6. Fair final comparison: combined model on the same untouched Isaac test split
+
+```bash
+uv run python scripts/infer_dataset.py \
+  --dataset ../data/refined_isaac_0908 \
+  --split test \
+  --seg-checkpoint "../runs_mod/combined_seg_final_${DATE}/best.pt" \
+  --keypoint-checkpoint "../runs_mod/combined_keypoints_final_${DATE}/best.pt" \
+  --camera-config configs/camera.yaml \
+  --gate-geometry configs/gate_geometry.yaml \
+  --output "../outputs_mod/combined_on_isaac_test_predictions_${DATE}" \
+  --device cuda
+```
+
+```bash
+uv run python scripts/evaluate_predictions.py \
+  --dataset ../data/refined_isaac_0908 \
+  --split test \
+  --predictions "../outputs_mod/combined_on_isaac_test_predictions_${DATE}" \
+  --output "../outputs_mod/combined_on_isaac_test_evaluation_${DATE}"
+```
+
+The two primary final reports to compare are therefore:
+
+```text
+../outputs_mod/isaac_test_evaluation_${DATE}/evaluation.json
+../outputs_mod/combined_on_isaac_test_evaluation_${DATE}/evaluation.json
+```
+
+This keeps the evaluation domain identical and measures the actual value of adding synthetic training data.
+
+## Optional diagnostic: combined model on the synthetic test split
+
+This is useful for diagnosing source-domain performance, but it should **not** replace the common Isaac test comparison above.
+
+```bash
+uv run python scripts/infer_dataset.py \
+  --dataset ../data/synth_large_0906 \
+  --split test \
+  --seg-checkpoint "../runs_mod/combined_seg_final_${DATE}/best.pt" \
+  --keypoint-checkpoint "../runs_mod/combined_keypoints_final_${DATE}/best.pt" \
+  --camera-config configs/camera.yaml \
+  --gate-geometry configs/gate_geometry.yaml \
+  --output "../outputs_mod/combined_on_synth_test_predictions_${DATE}" \
+  --device cuda
+```
+
+```bash
+uv run python scripts/evaluate_predictions.py \
+  --dataset ../data/synth_large_0906 \
+  --split test \
+  --predictions "../outputs_mod/combined_on_synth_test_predictions_${DATE}" \
+  --output "../outputs_mod/combined_on_synth_test_evaluation_${DATE}"
+```
+
+---
+
+# Video inference after selecting the winner
+
+Use either the Isaac-only or combined final checkpoints. Example using the combined model:
+
+```bash
+uv run python scripts/infer_video.py \
+  --video path/to/race_video.mp4 \
+  --seg-checkpoint "../runs_mod/combined_seg_final_${DATE}/best.pt" \
+  --keypoint-checkpoint "../runs_mod/combined_keypoints_final_${DATE}/best.pt" \
+  --camera-config configs/camera.yaml \
+  --gate-geometry configs/gate_geometry.yaml \
+  --output "../outputs_mod/race_video_combined_${DATE}" \
+  --device cuda \
+  --resize-input
+```
+
+`--resize-input` is only needed when the supplied video is not already 640x360 but has the same camera geometry/aspect ratio that you intentionally want mapped into the calibrated 640x360 model space.
+
+---
+
+# Output conventions
+
+Training runs are stored only under:
+
+```text
+../runs_mod/
+```
+
+Examples on September 8:
+
+```text
+../runs_mod/isaac_seg_cheap_0908/
+../runs_mod/isaac_keypoints_baseline_0908/
+../runs_mod/combined_seg_optuna_0908/
+../runs_mod/combined_keypoints_final_0908/
+```
+
+Inference/evaluation artifacts are stored only under:
+
+```text
+../outputs_mod/
+```
+
+Examples:
+
+```text
+../outputs_mod/isaac_test_predictions_0908/
+../outputs_mod/isaac_test_evaluation_0908/
+../outputs_mod/combined_on_isaac_test_predictions_0908/
+../outputs_mod/combined_on_isaac_test_evaluation_0908/
+```
+
+Every training run contains at least:
 
 ```text
 best.pt
@@ -238,364 +665,32 @@ training_history.json
 evaluation.json
 ```
 
----
-
-# 2. Longer baseline training
-
-### Segmentation
-
-```bash
-uv run python scripts/train_segmentation.py \
-  --config configs/segmentation/baseline.yaml \
-  --run-dir "../runs_mod/seg_baseline_$(date +%m%d)" \
-  --device cuda
-```
-
-### Keypoints
-
-```bash
-uv run python scripts/train_keypoints.py \
-  --config configs/keypoints/baseline.yaml \
-  --run-dir "../runs_mod/keypoints_baseline_$(date +%m%d)" \
-  --device cuda
-```
-
-The segmentation baseline uses a 5-frame RGB window. The keypoint baseline uses a 7-frame per-gate window.
-
----
-
-# 3. Optuna tuning
-
-The tuning configs intentionally use a limited number of sequences and fewer epochs so trials are cheap. Initialize from the baseline checkpoints to avoid repeatedly relearning basic gate features.
-
-### Segmentation tuning
-
-```bash
-uv run python scripts/tune_segmentation_optuna.py \
-  --config configs/segmentation/optuna.yaml \
-  --study-dir "../runs_mod/seg_tuning_$(date +%m%d)" \
-  --init-checkpoint "../runs_mod/seg_baseline_$(date +%m%d)/best.pt" \
-  --device cuda \
-  --n-trials 30
-```
-
-Outputs include:
+Every dataset evaluation produces:
 
 ```text
-../runs_mod/seg_tuning_$(date +%m%d)/study.db
-../runs_mod/seg_tuning_$(date +%m%d)/best_config.yaml
-../runs_mod/seg_tuning_$(date +%m%d)/trial_XXXX/
+evaluation.json
+per_sample_metrics.csv
 ```
 
-### Keypoint tuning
+# Reproducibility summary
 
-```bash
-uv run python scripts/tune_keypoints_optuna.py \
-  --config configs/keypoints/optuna.yaml \
-  --study-dir "../runs_mod/keypoints_tuning_$(date +%m%d)" \
-  --init-checkpoint "../runs_mod/keypoints_baseline_$(date +%m%d)/best.pt" \
-  --device cuda \
-  --n-trials 30
-```
-
----
-
-# 4. Build final configs from tuned values
-
-Do not train directly with `best_config.yaml` from Optuna because that config intentionally retains the cheap tuning sequence/epoch budget.
-
-Merge only the tuned hyperparameters into the full final schedule:
-
-### Segmentation
-
-```bash
-uv run python scripts/make_final_config.py \
-  --base-final configs/segmentation/final.yaml \
-  --tuned "../runs_mod/seg_tuning_$(date +%m%d)/best_config.yaml" \
-  --kind segmentation \
-  --output "../runs_mod/seg_tuning_$(date +%m%d)/final_config.yaml"
-```
-
-### Keypoints
-
-```bash
-uv run python scripts/make_final_config.py \
-  --base-final configs/keypoints/final.yaml \
-  --tuned "../runs_mod/keypoints_tuning_$(date +%m%d)/best_config.yaml" \
-  --kind keypoints \
-  --output "../runs_mod/keypoints_tuning_$(date +%m%d)/final_config.yaml"
-```
-
----
-
-# 5. Final full training
-
-The final configs consume every sequence in `train_sequences.txt`, while preserving validation and test holdouts.
-
-### Segmentation
-
-```bash
-uv run python scripts/train_segmentation.py \
-  --config "../runs_mod/seg_tuning_$(date +%m%d)/final_config.yaml" \
-  --init-checkpoint "../runs_mod/seg_baseline_$(date +%m%d)/best.pt" \
-  --run-dir "../runs_mod/seg_final_$(date +%m%d)" \
-  --device cuda
-```
-
-### Keypoints
-
-```bash
-uv run python scripts/train_keypoints.py \
-  --config "../runs_mod/keypoints_tuning_$(date +%m%d)/final_config.yaml" \
-  --init-checkpoint "../runs_mod/keypoints_baseline_$(date +%m%d)/best.pt \
-  --run-dir "../runs_mod/keypoints_final_$(date +%m%d)" \
-  --device cuda
-```
-
-The pose stage requires no training.
-
----
-
-# 6. Run the complete pipeline on the untouched test split
-
-```bash
-uv run python scripts/infer_dataset.py \
-  --dataset ../data/perception_dataset_v1 \
-  --split test \
-  --seg-checkpoint "../runs_mod/seg_final_$(date +%m%d)/best.pt" \
-  --keypoint-checkpoint "../runs_mod/keypoints_final_$(date +%m%d)/best.pt" \
-  --camera-config configs/camera.yaml \
-  --gate-geometry configs/gate_geometry.yaml \
-  --output "../outputs_mod/test_predictions_$(date +%m%d)" \
-  --device cuda
-```
-
-Then compute the canonical report:
-
-```bash
-uv run python scripts/evaluate_predictions.py \
-  --dataset ../data/perception_dataset_v1 \
-  --split test \
-  --predictions "../outputs/test_predictions_$(date +%m%d)" \
-  --output "../outputs/test_evaluation_$(date +%m%d)"
-```
-
-This writes:
+For the controlled comparison in this README:
 
 ```text
-outputs/test_evaluation/
-├── evaluation.json
-└── per_sample_metrics.csv
+seed                                  42
+sequence selection seed               42
+cheap training fraction               15%
+cheap epochs                          8
+baseline training fraction            50%
+baseline epochs                       30
+Optuna training fraction              same 50%
+Optuna trials                         20
+Optuna epochs/trial                   15
+final training fraction               100%
+final epochs                          60
+validation                            full Isaac validation split
+final comparison                      full untouched Isaac test split
+split unit                            sequence, never individual frame
 ```
 
-The evaluator reports segmentation IoU/Dice/precision/recall, instance precision/recall/count accuracy, keypoint pixel/normalized/PCK metrics, pose translation/rotation/reprojection error, catastrophic failures, and runtime summary.
-
----
-
-# 7. Run inference on a video
-
-The video should correspond to the calibrated `640x360` camera. By default the script refuses a different resolution rather than silently invalidating calibration.
-
-```bash
-uv run python scripts/infer_video.py \
-  --video ../data/refined_target/sim0721-10/video.mp4 \
-  --seg-checkpoint "../runs_mod/seg_final_$(date +%m%d)/best.pt" \
-  --keypoint-checkpoint "../runs_mod/keypoints_final_$(date +%m%d)/best.pt" \
-  --camera-config configs/camera.yaml \
-  --gate-geometry configs/gate_geometry.yaml \
-  --output "outputs/race_video \
-  --device cuda
-```
-
-If you intentionally want the script to resize a differently sized source to the calibrated resolution:
-
-```bash
-uv run python scripts/infer_video.py \
-  --video path/to/race_video.mp4 \
-  --seg-checkpoint "../runs_mod/seg_final_$(date +%m%d)/best.pt" \
-  --keypoint-checkpoint "../runs_mod/keypoints_final_$(date +%m%d)/best.pt" \
-  --output outputs/race_video \
-  --device cuda \
-  --resize-input
-```
-
-Output:
-
-```text
-outputs/race_video/
-├── inference.json
-├── frames.jsonl
-└── instance_masks/
-    ├── frame_000000.png
-    ├── frame_000001.png
-    └── ...
-```
-
-The instance PNGs use the canonical output encoding:
-
-```text
-0 = background
-1 = predicted gate instance 1
-2 = predicted gate instance 2
-...
-```
-
-The numeric `mask_id` is frame-local. Temporal identity is the separate string `track_id`.
-
-A normal full per-instance JSON record looks like:
-
-```json
-{
-  "mask_id": 2,
-  "source": "model",
-  "track_id": "track_0007",
-  "detection_score": 0.973,
-  "mask_score": 0.973,
-  "box_xyxy_px": [421.3, 87.2, 1104.8, 701.4],
-  "visible_area_px": 62813,
-  "keypoints": {
-    "outer_tl": {
-      "xy_px": [428.1, 93.0],
-      "confidence": 0.981,
-      "visibility": "visible"
-    }
-  },
-  "pose": {
-    "T_camera_gate": [[1,0,0,0.14],[0,1,0,-0.06],[0,0,1,4.22],[0,0,0,1]],
-    "translation_camera_m": [0.14, -0.06, 4.22],
-    "quaternion_camera_xyzw": [0.0, 0.0, 0.0, 1.0],
-    "distance_camera_m": 4.223,
-    "depth_camera_z_m": 4.22,
-    "mean_reprojection_error_px": 2.1,
-    "confidence": 0.91
-  }
-}
-```
-
-## Raw training output contracts
-
-### Segmentation model
-
-The segmentation network does **not** train on the integer PNG directly as its prediction. It emits continuous raw values:
-
-```python
-{
-  "frames": [
-    {
-      "object_logits":      Tensor[B,Q],
-      "boxes":              Tensor[B,Q,4],
-      "mask_logits":        Tensor[B,Q,H/4,W/4],
-      "track_embeddings":   Tensor[B,Q,D]
-    }
-  ]
-}
-```
-
-During training, the model returns one prediction dictionary for every time position in the window so the loss can supervise temporal consistency. Hungarian matching assigns queries to GT gate instances.
-
-Losses:
-
-- gate/no-gate BCE
-- mask BCE
-- Dice
-- box L1
-- temporal track embedding consistency/separation
-
-At inference, the common decoder upsamples the per-query masks, resolves overlap, and creates the integer instance-ID PNG.
-
-### Keypoint model
-
-Raw output:
-
-```python
-{
-  "keypoints": Tensor[B,8,2],
-  "visibility_logits": Tensor[B,8,4]
-}
-```
-
-The four visibility classes are:
-
-```text
-0 invalid/behind-camera
-1 visible
-2 occluded
-3 out-of-frame
-```
-
-The coordinates are relative to the current gate crop and are intentionally not clamped to `[0,1]`, because amodal/out-of-frame corners can legitimately lie outside the crop.
-
-## Keypoint robustness to segmentation errors
-
-At runtime the keypoint model sees predicted segmentation masks, not perfect GT masks. Training therefore corrupts masks with random erosion/dilation and local mask dropout, while also jittering/zooming the gate crop. This reduces the train/runtime domain gap without creating a second canonical dataset.
-
-## Augmentation
-
-Segmentation applies one synchronized transformation to every RGB/mask pair in a temporal window:
-
-- brightness
-- contrast
-- saturation
-- hue shift
-- gamma
-- Gaussian noise
-- Gaussian blur
-- zoom
-- translation/crop-like shift
-- small rotation
-
-RGB uses linear interpolation; the instance-ID mask always uses nearest-neighbor interpolation so integer identities are preserved.
-
-Validation/test data are never augmented.
-
-## Repository layout
-
-```text
-modular-gate-perception/
-├── pyproject.toml
-├── README.md
-├── configs/
-│   ├── camera.yaml
-│   ├── gate_geometry.yaml
-│   ├── segmentation/
-│   │   ├── cheap.yaml
-│   │   ├── baseline.yaml
-│   │   ├── optuna.yaml
-│   │   └── final.yaml
-│   └── keypoints/
-│       ├── cheap.yaml
-│       ├── baseline.yaml
-│       ├── optuna.yaml
-│       └── final.yaml
-├── scripts/
-│   ├── train_segmentation.py
-│   ├── train_keypoints.py
-│   ├── tune_segmentation_optuna.py
-│   ├── tune_keypoints_optuna.py
-│   ├── make_final_config.py
-│   ├── infer_dataset.py
-│   ├── evaluate_predictions.py
-│   ├── infer_video.py
-│   └── inspect_camera.py
-└── src/gateperception/
-    ├── data/
-    ├── models/
-    ├── training/
-    ├── inference/
-    ├── geometry/
-    └── utils/
-```
-
-## Recommended comparison workflow
-
-For architecture comparison, do not compare only validation loss. Use the generated `evaluation.json` and full test evaluator, emphasizing:
-
-1. gate instance recall / missed-gate rate
-2. catastrophic-failure rate
-3. instance IoU / Dice
-4. visible and occluded keypoint error
-5. pose translation and rotation tail error (`p95/p99`)
-6. latency/FPS
-7. track stability / ID switches in later tracker evaluation
-
-A slightly lower mean IoU can be the better flight model if it has substantially fewer missed gates and catastrophic pose failures.
+This protocol is designed so differences between the Isaac-only and Synthetic+Isaac experiments come from **training data composition**, not from different random subsets, seeds, validation domains, or test sets.

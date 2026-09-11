@@ -1,6 +1,8 @@
 seed: 42
 dataset:
   sources:
+  - name: synthetic
+    root: ../data/synth_large_0906
   - name: isaac
     root: ../data/refined_isaac_0908
   validation_sources:
@@ -26,7 +28,7 @@ model:
   nheads: 4
   pretrained_backbone: true
 training:
-  epochs: 30
+  epochs: 15
   batch_size: 4
   val_batch_size: 4
   num_workers: 6
@@ -79,3 +81,5 @@ loss:
   cost_mask_dice: 2.0
   cost_box: 1.0
   cost_object: 0.5
+optuna:
+  study_name: combined_temporal_gate_instance_segmentation

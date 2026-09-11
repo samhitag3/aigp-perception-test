@@ -1,6 +1,8 @@
 seed: 42
 dataset:
   sources:
+  - name: synthetic
+    root: ../data/synth_large_0906
   - name: isaac
     root: ../data/refined_isaac_0908
   validation_sources:

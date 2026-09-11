@@ -1,37 +1,126 @@
 from __future__ import annotations
-from pathlib import Path
 from typing import Any
-import torch
-from torch.utils.data import DataLoader
 
-from gateperception.data.canonical import TemporalSegDataset, GateKeypointDataset, collate_seg, collate_keypoints
-from gateperception.models import build_segmentation_model, build_keypoint_model
+import torch
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
+
+from gateperception.data.canonical import (
+    TemporalSegDataset,
+    GateKeypointDataset,
+    collate_seg,
+    collate_keypoints,
+)
 from gateperception.training.seg_losses import segmentation_loss
 from gateperception.training.keypoint_losses import keypoint_loss
 
 
+def _dataset_sources(d: dict[str, Any]) -> list[dict[str, str]]:
+    """Return normalized dataset sources while preserving single-root compatibility."""
+    if d.get("sources"):
+        out: list[dict[str, str]] = []
+        for i, src in enumerate(d["sources"]):
+            if isinstance(src, str):
+                out.append({"name": f"source_{i}", "root": src})
+            else:
+                out.append({"name": str(src.get("name", f"source_{i}")), "root": str(src["root"])})
+        return out
+    if "root" not in d:
+        raise KeyError("dataset must define either 'root' or non-empty 'sources'")
+    return [{"name": str(d.get("name", "dataset")), "root": str(d["root"])}]
+
+
+def _combine(parts: list[Dataset]) -> Dataset:
+    if not parts:
+        raise ValueError("No dataset sources configured")
+    return parts[0] if len(parts) == 1 else ConcatDataset(parts)
+
+
+def _loader(ds: Dataset, *, batch_size: int, shuffle: bool, num_workers: int, collate_fn, seed: int) -> DataLoader:
+    generator = torch.Generator()
+    generator.manual_seed(int(seed))
+    return DataLoader(
+        ds,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        pin_memory=True,
+        collate_fn=collate_fn,
+        generator=generator,
+        persistent_workers=num_workers > 0,
+    )
+
+
 def build_seg_loaders(cfg: dict[str, Any]):
     d = cfg["dataset"]
-    common = dict(
-        root=d["root"],
-        window_size=int(cfg["model"].get("window_size", 4)),
-        width=int(d.get("width", 640)),
-        height=int(d.get("height", 360)),
-        augmentation=cfg.get("augmentation"),
-        seed=int(cfg.get("seed", 42)),
+    seed = int(cfg.get("seed", 42))
+    selection_seed = int(d.get("selection_seed", seed))
+    train_fraction = float(d.get("train_fraction", 1.0))
+    val_fraction = float(d.get("val_fraction", 1.0))
+    sources = _dataset_sources(d)
+    val_spec = dict(d)
+    if d.get("validation_sources"):
+        val_spec["sources"] = d["validation_sources"]
+        val_spec.pop("root", None)
+    val_sources = _dataset_sources(val_spec)
+
+    train_parts: list[Dataset] = []
+    val_parts: list[Dataset] = []
+    for src in sources:
+        common = dict(
+            root=src["root"],
+            window_size=int(cfg["model"].get("window_size", 4)),
+            width=int(d.get("width", 640)),
+            height=int(d.get("height", 360)),
+            seed=seed,
+            selection_seed=selection_seed,
+        )
+        train_parts.append(
+            TemporalSegDataset(
+                split_names=tuple(d.get("train_splits", ["train"])),
+                max_sequences=d.get("max_train_sequences"),
+                sequence_fraction=train_fraction,
+                augmentation=cfg.get("augmentation"),
+                **common,
+            )
+        )
+    for src in val_sources:
+        val_common = dict(
+            root=src["root"],
+            window_size=int(cfg["model"].get("window_size", 4)),
+            width=int(d.get("width", 640)),
+            height=int(d.get("height", 360)),
+            seed=seed,
+            selection_seed=selection_seed,
+        )
+        val_parts.append(
+            TemporalSegDataset(
+                split_names=tuple(d.get("val_splits", ["validation"])),
+                max_sequences=d.get("max_val_sequences"),
+                sequence_fraction=val_fraction,
+                augmentation={"enabled": False},
+                **val_common,
+            )
+        )
+
+    train_ds = _combine(train_parts)
+    val_ds = _combine(val_parts)
+    nworkers = int(cfg["training"].get("num_workers", 4))
+    tr = _loader(
+        train_ds,
+        batch_size=int(cfg["training"]["batch_size"]),
+        shuffle=True,
+        num_workers=nworkers,
+        collate_fn=collate_seg,
+        seed=seed,
     )
-    train_ds = TemporalSegDataset(
-        split_names=tuple(d.get("train_splits", ["train"])),
-        max_sequences=d.get("max_train_sequences"),
-        **common,
+    va = _loader(
+        val_ds,
+        batch_size=int(cfg["training"].get("val_batch_size", cfg["training"]["batch_size"])),
+        shuffle=False,
+        num_workers=nworkers,
+        collate_fn=collate_seg,
+        seed=seed,
     )
-    val_ds = TemporalSegDataset(
-        split_names=tuple(d.get("val_splits", ["validation"])),
-        max_sequences=d.get("max_val_sequences"),
-        **{**common, "augmentation": {"enabled": False}},
-    )
-    tr = DataLoader(train_ds, batch_size=int(cfg["training"]["batch_size"]), shuffle=True, num_workers=int(cfg["training"].get("num_workers", 4)), pin_memory=True, collate_fn=collate_seg)
-    va = DataLoader(val_ds, batch_size=int(cfg["training"].get("val_batch_size", cfg["training"]["batch_size"])), shuffle=False, num_workers=int(cfg["training"].get("num_workers", 4)), pin_memory=True, collate_fn=collate_seg)
     return train_ds, val_ds, tr, va
 
 
@@ -57,17 +146,75 @@ def seg_val(model, loader, device, cfg):
 
 def build_keypoint_loaders(cfg: dict[str, Any]):
     d = cfg["dataset"]
-    common = dict(
-        root=d["root"],
-        window_size=int(cfg["model"].get("window_size", 5)),
-        crop_size=tuple(cfg["model"].get("crop_size", [192, 192])),
-        crop_padding=float(cfg["model"].get("crop_padding", 0.35)),
-        seed=int(cfg.get("seed", 42)),
+    seed = int(cfg.get("seed", 42))
+    selection_seed = int(d.get("selection_seed", seed))
+    train_fraction = float(d.get("train_fraction", 1.0))
+    val_fraction = float(d.get("val_fraction", 1.0))
+    sources = _dataset_sources(d)
+    val_spec = dict(d)
+    if d.get("validation_sources"):
+        val_spec["sources"] = d["validation_sources"]
+        val_spec.pop("root", None)
+    val_sources = _dataset_sources(val_spec)
+
+    train_parts: list[Dataset] = []
+    val_parts: list[Dataset] = []
+    for src in sources:
+        common = dict(
+            root=src["root"],
+            window_size=int(cfg["model"].get("window_size", 5)),
+            crop_size=tuple(cfg["model"].get("crop_size", [192, 192])),
+            crop_padding=float(cfg["model"].get("crop_padding", 0.35)),
+            seed=seed,
+            selection_seed=selection_seed,
+        )
+        train_parts.append(
+            GateKeypointDataset(
+                split_names=tuple(d.get("train_splits", ["train"])),
+                max_sequences=d.get("max_train_sequences"),
+                sequence_fraction=train_fraction,
+                augmentation=cfg.get("augmentation"),
+                **common,
+            )
+        )
+    for src in val_sources:
+        val_common = dict(
+            root=src["root"],
+            window_size=int(cfg["model"].get("window_size", 5)),
+            crop_size=tuple(cfg["model"].get("crop_size", [192, 192])),
+            crop_padding=float(cfg["model"].get("crop_padding", 0.35)),
+            seed=seed,
+            selection_seed=selection_seed,
+        )
+        val_parts.append(
+            GateKeypointDataset(
+                split_names=tuple(d.get("val_splits", ["validation"])),
+                max_sequences=d.get("max_val_sequences"),
+                sequence_fraction=val_fraction,
+                augmentation={"enabled": False},
+                **val_common,
+            )
+        )
+
+    train_ds = _combine(train_parts)
+    val_ds = _combine(val_parts)
+    nworkers = int(cfg["training"].get("num_workers", 4))
+    tr = _loader(
+        train_ds,
+        batch_size=int(cfg["training"]["batch_size"]),
+        shuffle=True,
+        num_workers=nworkers,
+        collate_fn=collate_keypoints,
+        seed=seed,
     )
-    train_ds = GateKeypointDataset(split_names=tuple(d.get("train_splits", ["train"])), max_sequences=d.get("max_train_sequences"), augmentation=cfg.get("augmentation"), **common)
-    val_ds = GateKeypointDataset(split_names=tuple(d.get("val_splits", ["validation"])), max_sequences=d.get("max_val_sequences"), augmentation={"enabled": False}, **common)
-    tr = DataLoader(train_ds, batch_size=int(cfg["training"]["batch_size"]), shuffle=True, num_workers=int(cfg["training"].get("num_workers", 4)), pin_memory=True, collate_fn=collate_keypoints)
-    va = DataLoader(val_ds, batch_size=int(cfg["training"].get("val_batch_size", cfg["training"]["batch_size"])), shuffle=False, num_workers=int(cfg["training"].get("num_workers", 4)), pin_memory=True, collate_fn=collate_keypoints)
+    va = _loader(
+        val_ds,
+        batch_size=int(cfg["training"].get("val_batch_size", cfg["training"]["batch_size"])),
+        shuffle=False,
+        num_workers=nworkers,
+        collate_fn=collate_keypoints,
+        seed=seed,
+    )
     return train_ds, val_ds, tr, va
 
 

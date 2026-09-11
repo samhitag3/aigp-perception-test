@@ -1,6 +1,8 @@
 seed: 42
 dataset:
   sources:
+  - name: synthetic
+    root: ../data/synth_large_0906
   - name: isaac
     root: ../data/refined_isaac_0908
   validation_sources:
@@ -13,7 +15,7 @@ dataset:
   val_splits:
   - validation
   selection_seed: 42
-  train_fraction: 0.5
+  train_fraction: 0.15
   val_fraction: 1.0
   max_train_sequences: null
   max_val_sequences: null
@@ -26,7 +28,7 @@ model:
   nheads: 4
   pretrained_backbone: true
 training:
-  epochs: 30
+  epochs: 8
   batch_size: 4
   val_batch_size: 4
   num_workers: 6

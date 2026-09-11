@@ -191,6 +191,14 @@ def _generate_sequence(task: dict):
     base_seed = int(cfg["seed"])
     rng = np.random.default_rng(base_seed + seq_index * 100003)
     W, H = int(cfg["image"]["width"]), int(cfg["image"]["height"])
+    expected_w = int(cfg["camera"]["width"])
+    expected_h = int(cfg["camera"]["height"])
+
+    if W != expected_w or H != expected_h:
+        raise ValueError(
+            f"Image resolution {W}x{H} does not match "
+            f"camera resolution {expected_w}x{expected_h}"
+        )
     fps = float(cfg["sequences"]["fps"])
 
     skin = load_gate_skin(gate_skin_path)
@@ -199,11 +207,16 @@ def _generate_sequence(task: dict):
     traj = generate_camera_trajectory(rng, gates, frames, cfg["sequences"])
     noise = sample_sequence_noise(rng, cfg["noise"])
     bg, bg_id = _choose_background(rng, cfg, W, H)
-    fx = float(rng.uniform(*cfg["camera"]["fx_range"]))
-    fy = fx * float(rng.uniform(*cfg["camera"]["fy_scale_range"]))
-    cx = W / 2 + float(rng.uniform(-cfg["camera"]["principal_point_jitter_px"], cfg["camera"]["principal_point_jitter_px"]))
-    cy = H / 2 + float(rng.uniform(-cfg["camera"]["principal_point_jitter_px"], cfg["camera"]["principal_point_jitter_px"]))
-    K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], float)
+    fx = float(cfg["camera"]["fx"])
+    fy = float(cfg["camera"]["fy"])
+    cx = float(cfg["camera"]["cx"])
+    cy = float(cfg["camera"]["cy"])
+
+    K = np.array([
+        [fx, 0.0, cx],
+        [0.0, fy, cy],
+        [0.0, 0.0, 1.0]
+    ], dtype=np.float64)
 
     seqdir = ensure_sequence_dirs(root, seq_id)
     seq_meta = {

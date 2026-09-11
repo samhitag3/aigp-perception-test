@@ -1,6 +1,8 @@
 seed: 42
 dataset:
   sources:
+  - name: synthetic
+    root: ../data/synth_large_0906
   - name: isaac
     root: ../data/refined_isaac_0908
   validation_sources:
@@ -11,7 +13,7 @@ dataset:
   val_splits:
   - validation
   selection_seed: 42
-  train_fraction: 0.15
+  train_fraction: 0.5
   val_fraction: 1.0
   max_train_sequences: null
   max_val_sequences: null
@@ -44,7 +46,7 @@ augmentation:
   mask_morph_max_kernel: 5
   mask_dropout_fraction: 0.2
 training:
-  epochs: 8
+  epochs: 15
   batch_size: 32
   val_batch_size: 32
   num_workers: 6
@@ -56,3 +58,5 @@ loss:
   coord_weight: 5.0
   visibility_weight: 1.0
   smooth_l1_beta: 0.05
+optuna:
+  study_name: combined_temporal_mask_keypoints
