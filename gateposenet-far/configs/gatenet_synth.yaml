@@ -1,0 +1,50 @@
+# GateNet training on the imported sam3-autolabeler data (data/synth).
+# Evaluate with: scripts/evaluate.py --model gatenet --config this --checkpoint best.pt
+name: gatenet_synth
+
+model:
+  in_channels: 3
+  base_channels: [16, 32, 64, 128, 256]
+  width_factor: 4
+  deep_supervision: true
+
+data:
+  mode: single
+  root: data/synth          # produced by scripts/import_data.py
+  height: 384
+  width: 384
+  val_frac: 0.1
+  mask_suffix: ""
+
+train:
+  epochs: 100
+  batch_size: 16
+  optimizer: adamw
+  lr: 0.001
+  weight_decay: 0.01
+  num_workers: 4
+  amp: true
+  seed: 42
+  log_interval: 20
+
+schedule:
+  milestones: [10, 33, 66, 90]
+  gamma: 0.31622776601
+
+loss:
+  bce_weight: 2.0
+  scale_weights: [4.0, 2.0, 1.0, 1.0, 1.0]
+
+augment:
+  rotate_deg: 15.0
+  translate: 0.1
+  scale: [0.8, 1.2]
+  hsv: [12.0, 0.4, 0.4]
+  motion_blur: [5, 15]
+  motion_blur_p: 0.5
+  gauss_noise_std: 12.0
+  gauss_noise_p: 0.5
+  hflip_p: 0.0
+
+output:
+  dir: runs/gatenet_synth

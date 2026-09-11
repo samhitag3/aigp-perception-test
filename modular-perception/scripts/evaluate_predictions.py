@@ -11,14 +11,18 @@ from gateperception.data.canonical import CanonicalIndex, KEYPOINT_ORDER
 
 
 def read_jsonl(path):
-    with open(path, "r", encoding="utf-8") as f: return [json.loads(x) for x in f if x.strip()]
+    with open(path, "r", encoding="utf-8") as f:
+        return [json.loads(x) for x in f if x.strip()]
+
 
 def iou(a,b):
     inter=np.logical_and(a,b).sum(); union=np.logical_or(a,b).sum(); return float(inter/union) if union else 0.0
 
+
 def rot_error_deg(Tp,Tg):
     Rp=np.asarray(Tp)[:3,:3]; Rg=np.asarray(Tg)[:3,:3]; R=Rp@Rg.T
     c=np.clip((np.trace(R)-1)/2,-1,1); return float(np.degrees(np.arccos(c)))
+
 
 def pct(values,p): return float(np.percentile(values,p)) if values else None
 
@@ -27,26 +31,43 @@ def safe_mean(v): return float(np.mean(v)) if v else None
 def safe_median(v): return float(np.median(v)) if v else None
 
 
+def scale_point(p, sx, sy):
+    return [float(p[0]) * sx, float(p[1]) * sy]
+
+
+def scale_box(box, sx, sy):
+    return [float(box[0])*sx, float(box[1])*sy, float(box[2])*sx, float(box[3])*sy]
+
+
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument("--dataset",required=True); ap.add_argument("--split",default="test"); ap.add_argument("--predictions",required=True); ap.add_argument("--output",required=True); ap.add_argument("--match-iou",type=float,default=0.5); args=ap.parse_args()
+    ap=argparse.ArgumentParser()
+    ap.add_argument("--dataset",required=True)
+    ap.add_argument("--split",default="test")
+    ap.add_argument("--predictions",required=True)
+    ap.add_argument("--output",required=True)
+    ap.add_argument("--match-iou",type=float,default=0.5)
+    args=ap.parse_args()
     idx=CanonicalIndex(args.dataset,[args.split]); pred_root=Path(args.predictions); out=Path(args.output); out.mkdir(parents=True,exist_ok=True)
     pixel_tp=pixel_fp=pixel_fn=pixel_tn=0
     gt_instances=pred_instances=matched_instances=0; count_correct=0; frames_total=0
     inst_ious=[]; kp_errors=[]; kp_norm=[]; visible_err=[]; occluded_err=[]; pose_t=[]; pose_r=[]; reproj=[]; runtimes=[]; catastrophic=0
     pck_counts=defaultdict(int); pck_total=0; rows=[]
     for sid in idx.sequence_ids:
-        preds={int(r["frame_index"]):r for r in read_jsonl(pred_root/sid/"frames.jsonl")}
+        pred_file=pred_root/sid/"frames.jsonl"
+        preds={int(r["frame_index"]):r for r in read_jsonl(pred_file)} if pred_file.exists() else {}
         for gt in idx.sequences[sid]:
             fi=int(gt["frame_index"]); pr=preds.get(fi,{"instances":[],"num_gate_instances":0})
             gtmask_src=np.asarray(Image.open(idx.frame_path(sid,gt["files"]["instance_mask"])))
             pmask_path=pred_root/sid/pr.get("instance_mask","")
-            pmask=np.asarray(Image.open(pmask_path)) if pmask_path.exists() else np.zeros_like(gtmask_src)
-            src_h,src_w=gtmask_src.shape[:2]; pred_h,pred_w=pmask.shape[:2]
-            sx,sy=pred_w/max(1,src_w),pred_h/max(1,src_h)
-            if (src_h,src_w)!=(pred_h,pred_w):
-                gtmask=cv2.resize(gtmask_src.astype(np.int32),(pred_w,pred_h),interpolation=cv2.INTER_NEAREST).astype(gtmask_src.dtype)
+            if pmask_path.exists():
+                pmask=np.asarray(Image.open(pmask_path))
+                ph,pw=pmask.shape[:2]
             else:
-                gtmask=gtmask_src
+                pw=int(pr.get("prediction_width_px",gtmask_src.shape[1])); ph=int(pr.get("prediction_height_px",gtmask_src.shape[0]))
+                pmask=np.zeros((ph,pw),dtype=np.uint16)
+            gh,gw=gtmask_src.shape[:2]
+            sx,sy=pw/max(1,gw),ph/max(1,gh)
+            gtmask=gtmask_src if (gw,gh)==(pw,ph) else cv2.resize(gtmask_src.astype(np.int32),(pw,ph),interpolation=cv2.INTER_NEAREST).astype(gtmask_src.dtype)
             gu=gtmask>0; pu=pmask>0
             pixel_tp+=np.logical_and(gu,pu).sum(); pixel_fp+=np.logical_and(~gu,pu).sum(); pixel_fn+=np.logical_and(gu,~pu).sum(); pixel_tn+=np.logical_and(~gu,~pu).sum()
             gt_gates=[g for g in gt.get("gates",[]) if g.get("mask_id") is not None and np.any(gtmask==int(g["mask_id"]))]
@@ -68,21 +89,19 @@ def main():
                 g,p=gt_gates[i],pred_gates[j]
                 box=g.get("bounding_boxes",{}).get("amodal_xyxy_px") or g.get("bounding_boxes",{}).get("visible_xyxy_px")
                 if box:
-                    box_eval=[float(box[0])*sx,float(box[1])*sy,float(box[2])*sx,float(box[3])*sy]
-                    diag=math.hypot(box_eval[2]-box_eval[0],box_eval[3]-box_eval[1])
-                else:
-                    diag=math.hypot(gtmask.shape[1],gtmask.shape[0])
+                    box=scale_box(box,sx,sy)
+                diag=math.hypot(float(box[2]-box[0]),float(box[3]-box[1])) if box else math.hypot(pw,ph)
                 per_k=[]
                 if p.get("keypoints"):
                     for name in KEYPOINT_ORDER:
                         gr=g.get("keypoints_2d",{}).get(name,{}); pp=p["keypoints"].get(name,{})
                         xygt=gr.get("projected_px"); xyp=pp.get("xy_px")
                         if gr.get("projection_valid",False) and xygt is not None and xyp is not None:
-                            xygt_eval=np.asarray([float(xygt[0])*sx,float(xygt[1])*sy],dtype=float)
-                            e=float(np.linalg.norm(np.asarray(xyp,dtype=float)-xygt_eval)); n=e/max(diag,1e-6)
+                            xygt_scaled=scale_point(xygt,sx,sy)
+                            e=float(np.linalg.norm(np.asarray(xyp)-np.asarray(xygt_scaled))); n=e/max(diag,1e-6)
                             kp_errors.append(e); kp_norm.append(n); per_k.append(e); pck_total+=1
                             for th in (0.01,0.02,0.05,0.10): pck_counts[th]+=int(n<=th)
-                            st=gr.get("visibility_state");
+                            st=gr.get("visibility_state")
                             if st=="visible": visible_err.append(e)
                             elif st=="occluded": occluded_err.append(e)
                 te=re=None
@@ -101,6 +120,7 @@ def main():
     det_precision=matched_instances/max(1,pred_instances); det_recall=matched_instances/max(1,gt_instances); det_f1=2*det_precision*det_recall/max(1e-12,det_precision+det_recall)
     report={
       "schema_version":"1.0.0",
+      "dataset":str(Path(args.dataset)),
       "evaluation":{"evaluation_split":args.split,"num_sequences":len(idx.sequence_ids),"num_frames":frames_total,"num_gate_instances":gt_instances,
         "segmentation":{"available":True,"pixel_metrics":{"iou_mean":union_iou,"dice_mean":dice,"precision":precision,"recall":recall,"f1":dice,"false_positive_rate":pixel_fp/max(1,pixel_fp+pixel_tn),"false_negative_rate":1-recall},"instance_metrics":{"mean_instance_iou":safe_mean(inst_ious),"gate_instance_precision":det_precision,"gate_instance_recall":det_recall,"gate_instance_f1":det_f1,"instance_count_accuracy":count_correct/max(1,frames_total),"missed_gate_rate":1-det_recall}},
         "keypoints":{"available":bool(kp_errors),"all_keypoints":{"mean_pixel_error":safe_mean(kp_errors),"median_pixel_error":safe_median(kp_errors),"p95_pixel_error":pct(kp_errors,95),"mean_normalized_error":safe_mean(kp_norm),"pck":{"threshold_0.01":pck_counts[0.01]/max(1,pck_total),"threshold_0.02":pck_counts[0.02]/max(1,pck_total),"threshold_0.05":pck_counts[0.05]/max(1,pck_total),"threshold_0.10":pck_counts[0.10]/max(1,pck_total)}},"visible_keypoints":{"mean_pixel_error":safe_mean(visible_err)},"occluded_keypoints":{"mean_pixel_error":safe_mean(occluded_err)}},
@@ -113,5 +133,6 @@ def main():
     with open(out/"per_sample_metrics.csv","w",newline="",encoding="utf-8") as f:
         w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(rows)
     print(json.dumps(report["evaluation"]["gate_detection"],indent=2))
+
 
 if __name__=="__main__": main()

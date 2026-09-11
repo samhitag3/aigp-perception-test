@@ -1,0 +1,54 @@
+# GateNet — SkyDreamer MAVLab variant (196x196, f=2, half-width).
+# Output mask is resized to 64x64 to feed the SkyDreamer policy.
+name: gatenet_mavlab
+
+model:
+  in_channels: 3
+  base_channels: [16, 32, 64, 128, 256]
+  width_factor: 2            # half-width relative to the f=4 nominal
+  deep_supervision: true
+
+data:
+  mode: single
+  root: data/train           # images/ + masks/
+  height: 196
+  width: 196
+  val_frac: 0.1
+  mask_suffix: ""
+
+train:
+  epochs: 100
+  batch_size: 16
+  optimizer: adamw
+  lr: 0.001
+  weight_decay: 0.01
+  num_workers: 4
+  amp: true
+  seed: 42
+  log_interval: 20
+
+schedule:
+  milestones: [10, 33, 66, 90]
+  gamma: 0.31622776601
+
+loss:
+  bce_weight: 2.0
+  scale_weights: [4.0, 2.0, 1.0, 1.0, 1.0]
+
+augment:
+  rotate_deg: 15.0
+  translate: 0.1
+  scale: [0.8, 1.2]
+  hsv: [12.0, 0.4, 0.4]
+  motion_blur: [5, 15]
+  motion_blur_p: 0.5
+  gauss_noise_std: 12.0      # SkyDreamer uses stronger shot noise (~40) for low-exposure
+  gauss_noise_p: 0.5
+  hflip_p: 0.0
+
+infer:
+  threshold: 0.5
+  out_size: 64               # SkyDreamer resizes masks to 64x64 for the policy
+
+output:
+  dir: runs/gatenet_mavlab

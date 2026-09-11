@@ -10,7 +10,7 @@ from gateperceiver.training.losses import compute_losses
 from gateperceiver.training.metrics import matched_batch_stats, reduce_stats
 from gateperceiver.training.per_sample import frame_row
 from gateperceiver.training.report import build_evaluation_report
-from gateperceiver.utils.seed import seed_everything
+from gateperceiver.utils.seed import seed_everything, seed_worker
 from gateperceiver.utils.io import write_json
 
 
@@ -25,9 +25,30 @@ def move_targets(targets, device):
 
 
 def build_loader(cfg, split, shuffle=False):
-    d=cfg["data"]; max_samples=d.get(f"max_{split}_samples")
-    ds=GateSequenceDataset(d["root"],split,window_size=d.get("window_size",1),stride=d.get("stride",1),image_size=tuple(d.get("image_size",[360,640])),augment=(d.get("augmentation",{}) if split=="train" else {}),max_samples=max_samples)
-    return ds,DataLoader(ds,batch_size=int(cfg["training"].get("batch_size",2)),shuffle=shuffle,num_workers=int(d.get("num_workers",4)),pin_memory=True,collate_fn=collate_gate_batch,drop_last=(shuffle and len(ds)>=int(cfg["training"].get("batch_size",2))))
+    d=cfg["data"]
+    roots=d.get("roots") or [d.get("root")]
+    roots=[r for r in roots if r]
+    if not roots:
+        raise ValueError("No dataset root configured; set data.root/data.roots or pass --dataset-root")
+    max_samples=d.get(f"max_{split}_samples")
+    fraction=float(d.get(f"{split}_sequence_fraction", 1.0))
+    seed=int(cfg.get("seed",42))
+    ds=GateSequenceDataset(
+        roots, split, window_size=d.get("window_size",1), stride=d.get("stride",1),
+        image_size=tuple(d.get("image_size",[360,640])),
+        augment=(d.get("augmentation",{}) if split=="train" else {}),
+        max_samples=max_samples, sequence_fraction=fraction, seed=seed,
+    )
+    generator=torch.Generator()
+    generator.manual_seed(seed + {"train":0,"validation":1000,"test":2000}.get(split,3000))
+    loader=DataLoader(
+        ds, batch_size=int(cfg["training"].get("batch_size",2)), shuffle=shuffle,
+        num_workers=int(d.get("num_workers",4)), pin_memory=True,
+        collate_fn=collate_gate_batch,
+        drop_last=(shuffle and len(ds)>=int(cfg["training"].get("batch_size",2))),
+        worker_init_fn=seed_worker, generator=generator,
+    )
+    return ds,loader
 
 
 def build_optimizer(model,cfg):
@@ -36,9 +57,21 @@ def build_optimizer(model,cfg):
 
 
 def train_experiment(cfg: dict, run_dir: str|Path, device="cuda", trial=None):
-    run=Path(run_dir); run.mkdir(parents=True,exist_ok=True); seed_everything(int(cfg.get("seed",42)))
+    run=Path(run_dir); run.mkdir(parents=True,exist_ok=True); seed_everything(int(cfg.get("seed",42)), deterministic=bool(cfg.get("deterministic", True)))
     dev=torch.device(device if device!="cuda" or torch.cuda.is_available() else "cpu")
     train_ds,train_loader=build_loader(cfg,"train",True); val_ds,val_loader=build_loader(cfg,"validation",False)
+    selection = {
+        "seed": int(cfg.get("seed",42)),
+        "train_sequence_fraction": float(cfg.get("data",{}).get("train_sequence_fraction",1.0)),
+        "validation_sequence_fraction": float(cfg.get("data",{}).get("validation_sequence_fraction",1.0)),
+        "train": {"selected_sequences": train_ds.selected_sequences, "num_windows": len(train_ds)},
+        "validation": {"selected_sequences": val_ds.selected_sequences, "num_windows": len(val_ds)},
+    }
+    write_json(selection, run/"data_selection.json")
+    print("data roots:", [str(x) for x in train_ds.roots])
+    print("train sequence fraction:", selection["train_sequence_fraction"], "seed:", selection["seed"])
+    print("selected train sequences:", {k: len(v) for k,v in train_ds.selected_sequences.items()}, "windows:", len(train_ds))
+    print("validation sequences:", {k: len(v) for k,v in val_ds.selected_sequences.items()}, "windows:", len(val_ds))
     model=GatePerceiver(cfg).to(dev); opt=build_optimizer(model,cfg); epochs=int(cfg["training"].get("epochs",20)); amp=bool(cfg["training"].get("amp",True) and dev.type=="cuda")
     scaler=torch.amp.GradScaler("cuda",enabled=amp); hist=[]; best=-1e9; best_metrics={}
     for epoch in range(1,epochs+1):

@@ -1,8 +1,8 @@
 study_name: gateperceiver_v1
 storage: null
 base_config: configs/baseline.yaml
-n_trials: 30
-trial_epochs: 8
+n_trials: 20
+trial_epochs: 15
 n_startup_trials: 5
 n_warmup_epochs: 3
 

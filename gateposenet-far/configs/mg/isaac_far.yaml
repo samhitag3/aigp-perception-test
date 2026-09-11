@@ -1,0 +1,94 @@
+camera:
+  width_px: 640
+  height_px: 360
+  fx: 320.0
+  fy: 320.0
+  cx: 320.0
+  cy: 180.0
+  hfov_deg: 90.0
+  vfov_deg: 58.71550708558255
+model:
+  in_channels: 3
+  base_channels:
+  - 16
+  - 32
+  - 64
+  - 128
+  - 256
+  width_factor: 2
+  n_queries: 8
+  d_model: 128
+  n_dec_layers: 2
+  n_heads: 4
+  temporal_highres: true
+  multiscale_memory: true
+  mask_stride: 2
+train:
+  epochs: 60
+  batch_size: 12
+  lr: 0.0007
+  weight_decay: 0.01
+  num_workers: 8
+  amp: true
+  grad_clip: 1.0
+  seed: 42
+  log_interval: 20
+schedule:
+  milestones:
+  - 24
+  - 44
+  - 54
+  gamma: 0.31622776601
+loss:
+  w_presence: 2.0
+  w_mask: 2.0
+  w_corners: 5.0
+  w_corner_in: 0.5
+  w_center: 5.0
+  w_position: 2.0
+  w_depth: 2.0
+  w_rot: 2.0
+  w_visfrac: 0.5
+  w_target: 1.0
+  blind_scale: 0.3
+  symmetry_aware: true
+  far_start_m: 8.0
+  far_full_m: 20.0
+  far_boost: 2.0
+  small_area_frac: 0.003
+  small_boost: 1.0
+  max_gate_weight: 4.0
+  presence_focal_gamma: 1.5
+tuning:
+  objective: far_balanced_score
+  direction: minimize
+  seed: 42
+  epochs_per_trial: 15
+  trials: 20
+name: gateposenet_mg_isaac_far_v2
+data:
+  dataset_root: ../data/refined_isaac_0908
+  dataset_name: refined_isaac_0908
+  train_manifest: splits/train_sequences.txt
+  val_manifest: splits/validation_sequences.txt
+  test_manifest: splits/test_sequences.txt
+  window: 8
+  stride: 4
+  val_stride: 8
+  test_stride: 8
+  height: 192
+  width: 320
+  native_width: 640
+  native_height: 360
+  pose_sup_max_m: 50.0
+  nominal_focal: 320.0
+  ego_dropout: 0.25
+  max_gates: 8
+  preserve_small_masks: true
+  mask_stride: 2
+output:
+  dir: ../runs_vanilla/mg_isaac
+selection:
+  metric: far_balanced_score
+  far_recall_weight_m: 0.75
+  gate_recall_weight_m: 0.25

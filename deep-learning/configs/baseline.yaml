@@ -1,11 +1,15 @@
 seed: 42
+deterministic: true
 
 data:
-  root: ../data/synth_large_0906
+  root: data/perception_dataset_v1
   image_size: [360, 640]
   window_size: 4
   stride: 1
   num_workers: 6
+  train_sequence_fraction: 0.50
+  validation_sequence_fraction: 1.0
+  test_sequence_fraction: 1.0
   max_train_samples: null
   max_validation_samples: null
   augmentation:
@@ -36,7 +40,7 @@ model:
   keypoint_margin: 0.5
 
 training:
-  epochs: 25
+  epochs: 30
   batch_size: 2
   optimizer: adamw
   lr: 0.00015

@@ -1,0 +1,59 @@
+# GateNet fine-tuning — adapt a base model to a NEW gate type / venue / lighting
+# using a small labeled set. Start from a checkpoint trained with gatenet_a2rl.yaml.
+#
+#   python scripts/finetune.py --config configs/gatenet_finetune.yaml \
+#       --pretrained runs/gatenet_a2rl/best.pt
+name: gatenet_finetune
+
+model:                       # MUST match the pretrained model's architecture
+  in_channels: 3
+  base_channels: [16, 32, 64, 128, 256]
+  width_factor: 4
+  deep_supervision: true
+
+data:
+  mode: single               # the small new-domain dataset
+  root: data/finetune        # images/ + masks/  (e.g. new gate type)
+  height: 384
+  width: 384
+  val_frac: 0.2
+  mask_suffix: ""
+
+finetune:
+  freeze_encoder: false      # true => train only decoder + heads (tiny data)
+  reset_heads: false         # true => re-init 1x1 output heads (very different domain)
+  freeze_bn_stats: false     # true => don't update encoder BN running stats
+  encoder_lr_mult: 0.1       # encoder learns 10x slower than decoder (discriminative LR)
+
+train:
+  epochs: 30                 # fine-tuning is short
+  batch_size: 16
+  optimizer: adamw           # (finetune.py builds the optimizer from param groups)
+  lr: 0.0001                 # lower base LR than from-scratch (1e-3)
+  weight_decay: 0.01
+  num_workers: 4
+  amp: true
+  seed: 42
+  log_interval: 20
+
+schedule:
+  milestones: [15, 25]       # shorter schedule for fewer epochs
+  gamma: 0.31622776601       # sqrt(0.1)
+
+loss:
+  bce_weight: 2.0
+  scale_weights: [4.0, 2.0, 1.0, 1.0, 1.0]
+
+augment:
+  rotate_deg: 15.0
+  translate: 0.1
+  scale: [0.8, 1.2]
+  hsv: [12.0, 0.4, 0.4]
+  motion_blur: [5, 15]
+  motion_blur_p: 0.5
+  gauss_noise_std: 12.0
+  gauss_noise_p: 0.5
+  hflip_p: 0.0
+
+output:
+  dir: runs/gatenet_finetune

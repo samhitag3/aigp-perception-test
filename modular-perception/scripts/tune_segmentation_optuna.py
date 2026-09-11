@@ -38,7 +38,6 @@ def main():
             },
         }
         cfg = deep_update(base, patch)
-        # Keep training stochasticity fixed across trials; only hyperparameters vary.
         seed_everything(int(cfg.get("seed", 42)))
         _, _, tr, va = build_seg_loaders(cfg)
         model = build_segmentation_model(cfg).to(device)
@@ -50,8 +49,7 @@ def main():
         result = train_loop(model, tr, va, opt, int(cfg["training"]["epochs"]), device, run, cfg, seg_step, seg_val, amp=bool(cfg["training"].get("amp", True)))
         return float(result["best_metric"])
 
-    sampler = optuna.samplers.TPESampler(seed=int(base.get("seed", 42)))
-    study = optuna.create_study(study_name=base.get("optuna", {}).get("study_name", "temporal_gate_seg"), storage=db, load_if_exists=True, direction="minimize", sampler=sampler)
+    study = optuna.create_study(study_name=base.get("optuna", {}).get("study_name", "temporal_gate_seg"), storage=db, load_if_exists=True, direction="minimize", sampler=optuna.samplers.TPESampler(seed=int(base.get("seed", 42))))
     study.optimize(objective, n_trials=args.n_trials)
     best = deep_update(base, {
         "training": {"learning_rate": study.best_params["lr"], "weight_decay": study.best_params["weight_decay"]},
@@ -62,6 +60,13 @@ def main():
         },
     })
     save_yaml(best, study_dir / "best_config.yaml")
+    best_trial_dir = study_dir / f"trial_{study.best_trial.number:04d}"
+    best_trial_ckpt = best_trial_dir / "best.pt"
+    if best_trial_ckpt.exists():
+        shutil.copy2(best_trial_ckpt, study_dir / "best.pt")
+    with open(study_dir / "best_trial.json", "w", encoding="utf-8") as f:
+        import json
+        json.dump({"trial_number": study.best_trial.number, "best_value": study.best_value, "best_params": study.best_params}, f, indent=2)
     print("best_value=", study.best_value)
     print("best_params=", study.best_params)
 
