@@ -1,0 +1,143 @@
+name: maskposenet_union_noise_mg_synth_isaac
+
+camera:
+  width_px: 640
+  height_px: 360
+  # Training labels carry per-frame K; these are only nominal fallbacks.
+  fx: 320.0
+  fy: 320.0
+  cx: 320.0
+  cy: 180.0
+
+model:
+  # Keep 3 channels so the GatePoseNet-MG encoder architecture is unchanged.
+  # The union mask is repeated across all three channels; this is not RGB imagery.
+  in_channels: 3
+  base_channels: [16, 32, 64, 128, 256]
+  width_factor: 2
+  n_queries: 8
+  d_model: 128
+  n_dec_layers: 2
+  n_heads: 4
+  temporal_highres: true
+  multiscale_memory: true
+  mask_stride: 2
+
+data:
+  sources:
+    - name: synthetic
+      root: ../data/synth_large_0906
+      train_manifest: splits/train_sequences.txt
+      val_manifest: splits/validation_sequences.txt
+      test_manifest: splits/test_sequences.txt
+    - name: isaac
+      root: ../data/refined_isaac_0908
+      train_manifest: splits/train_sequences.txt
+      val_manifest: splits/validation_sequences.txt
+      test_manifest: splits/test_sequences.txt
+
+  # In this fork, instance_color mode is preprocessed into a binary UNION mask:
+  # all non-zero instance IDs become foreground=1 before entering the network.
+  # Per-instance GT supervision is still preserved internally for the output losses.
+  input_mode: instance_color
+  randomize_instance_colors: false
+  window: 8
+  stride: 4
+  val_stride: 8
+  test_stride: 8
+  height: 192
+  width: 320
+  native_width: 640
+  native_height: 360
+  pose_sup_max_m: 25.0
+  nominal_focal: 320.0
+  ego_dropout: 0.25
+  max_gates: 8
+  mask_stride: 2
+  preserve_small_masks: true
+
+  # TRAINING-ONLY corruption of the model INPUT mask. Validation/test always
+  # use clean masks, and GT per-gate masks/keypoints/poses are never corrupted.
+  mask_noise:
+    enabled: true
+    # Keep a meaningful clean fraction so robustness does not come at the cost
+    # of forgetting ideal masks.
+    clean_window_prob: 0.18
+    severity_min: 0.25
+    severity_max: 0.90
+
+    # Imperfect/rounded detector boundaries.
+    rounded_edge_prob: 0.65
+    rounded_kernel_max: 7
+    morph_prob: 0.55
+    max_shift_px: 3.0
+
+    # Missing bars/chunks and occasional detector misses.
+    incomplete_prob: 0.72
+    max_missing_chunks: 3
+    gate_dropout_prob: 0.055
+    full_frame_dropout_prob: 0.015
+
+    # False positives: persistent partial square/ring detections plus small blobs.
+    persistent_false_artifact_prob: 0.38
+    max_persistent_false_artifacts: 2
+    small_false_blob_prob: 0.24
+    max_small_false_blobs: 3
+
+train:
+  epochs: 60
+  batch_size: 16
+  lr: 0.0007
+  weight_decay: 0.01
+  num_workers: 16
+  amp: true
+  grad_clip: 1.0
+  seed: 42
+  log_interval: 20
+
+schedule:
+  milestones: [24, 44, 54]
+  gamma: 0.31622776601
+
+loss:
+  w_presence: 2.0
+  w_mask: 2.0
+  w_corners: 5.0
+  w_corner_in: 0.5
+  w_center: 5.0
+  w_position: 2.0
+  w_depth: 2.0
+  w_rot: 2.0
+  w_visfrac: 0.5
+  w_target: 1.0
+  blind_scale: 0.3
+  symmetry_aware: true
+  far_start_m: 8.0
+
+selection:
+  metric: far_balanced_score
+  far_recall_weight_m: 0.75
+  gate_recall_weight_m: 0.25
+
+tuning:
+  trials: 12
+  epochs_per_trial: 10
+  seed: 42
+
+  # Accuracy/robustness search.
+  objective: far_balanced_score
+
+  # Larger values give the ConvGRU more temporal context during training.
+  # They do not increase streaming model.step() inference cost.
+  window_choices: [8]
+
+  # Effectively disables 5090 latency pruning.
+  # Latency is benchmarked separately after selecting the best model.
+  max_5090_step_ms: 1000.0
+
+  # Keep collecting latency as diagnostic information.
+  latency_warmup: 20
+  latency_iters: 40
+
+output:
+  dir: ../runs_union_noise

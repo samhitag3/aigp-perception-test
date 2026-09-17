@@ -1,64 +1,33 @@
-# GateSynth Accelerated
+# GateSynth Diverse Motion v0.3
 
-Synthetic sequence generator for the canonical UAV gate perception dataset contract.
+Canonical synthetic UAV-gate sequence generator for rapid perception-model smoke testing while waiting for Isaac Sim data.
 
-This accelerated version adds:
+This version preserves the canonical dataset contract and adds deliberately diverse, physically time-sampled flight trajectories.
 
-- **sequence-parallel generation** with multiple worker processes
-- **optional GPU batched photometric augmentation** using PyTorch/CUDA
-- large-scale configs intended for generating **many sequences**
-- the same output schema as the original pipeline
+## Fixed real-camera calibration
 
-## What it generates
+The camera is **not randomized**. Every sequence and frame uses exactly:
 
-For each sequence:
-
-- RGB frames
-- one uint16 instance-mask PNG per frame
-- `sequence.json`
-- `frames.jsonl`
-- train/validation/test sequence manifests
-- `dataset.json`
-- `gate_geometry.json`
-
-The data follows the canonical contract:
-
-- one frame-local integer instance mask per image (`0 = background`, `1..N = gate mask IDs`)
-- persistent `track_id` per gate across a sequence
-- 8 canonical projected 2D keypoints per gate
-- 3D keypoints, gate pose, camera pose, drone pose, distance, depth, visibility, occlusion, truncation, route metadata, etc.
-
-## Installation
-
-Navigate to the GateSynth folder:
-
-```bash
-cd synth-data-gen
+```text
+width  = 640
+height = 360
+fx = 320.0
+fy = 320.0
+cx = 320.0
+cy = 180.0
+K = [[320, 0, 320],
+     [0, 320, 180],
+     [0, 0, 1]]
+HFoV = 90.0 deg
+VFoV = 58.7155070856 deg
+lens distortion = none
 ```
 
-CPU-only:
+The generator fails immediately if image resolution and camera resolution disagree.
 
-```bash
-deactivate
-uv venv
-source .venv/bin/activate
-uv pip install -e .
-```
+## Gate skin and geometry
 
-With optional GPU augmentation:
-
-```bash
-deactivate
-uv venv
-source .venv/bin/activate
-uv pip install -e '.[gpu]'
-```
-
-You may also install your own CUDA-enabled PyTorch build manually.
-
-## Gate skin
-
-The generator expects your original `SAMPLE_GATE_aigp.jpg` and cuts out the gate ring using:
+The input gate skin is `SAMPLE_GATE_aigp.jpg` and the gate ring is cut from:
 
 ```python
 OG_GATE_DICT = {
@@ -67,119 +36,313 @@ OG_GATE_DICT = {
 }
 ```
 
-## Fast usage modes
+Physical geometry:
 
-### 1) Large-scale GPU-augmented mode
-
-This is best when you want to exploit the RTX 4070 for batched photometric corruption. It runs one main generation process and batches the augmentations on GPU.
-
-```bash
-python scripts/generate.py \
-  --config configs/large_scale_gpu.yaml \
-  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
-  --output "../data/synth_large_$(date +%m%d)"
+```text
+outer width/height = 2.7 m
+inner width/height = 1.5 m
+depth = 0.26 m
 ```
 
-Notes:
+## What is diverse now
 
-- `generation.num_workers: 1`
-- `acceleration.photometric_backend: auto`
-- `acceleration.device: cuda`
-- `acceleration.frame_batch_size: 32`
-- `write_checksums: false` for speed
+Each sequence independently samples:
 
-### 2) Large-scale CPU-parallel mode
+- a random global course direction
+- 3-D gate positions
+- spacing between gates
+- gate altitude
+- gate yaw offset relative to course direction
+- gate pitch and roll
+- course style: `straight`, `flowing`, `technical`, or `aggressive`
+- turns between successive gates, including occasional hard turns
+- lateral and vertical path offsets through the gate openings
+- camera/gaze offsets over time
+- motion profile: `slow`, `medium`, `fast`, or `aggressive`
+- cruise speed
+- acceleration limit
+- explicit acceleration/deceleration speed events
+- smooth speed modulation
+- automatic slowing around high-curvature turns
+- sequence-consistent noise tier and strengths
 
-This is best when sequence rendering and disk writing dominate. Multiple worker processes each render full sequences independently.
+The trajectory is sampled at fixed FPS by integrating speed over path arc length. Therefore stored speed, velocity, acceleration, timestamps, and frame-to-frame displacement are physically consistent instead of being arbitrary spline derivatives.
 
-```bash
-python scripts/generate.py \
-  --config configs/large_scale_cpu_parallel.yaml \
-  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
-  --output "../data/synth_large_$(date +%m%d)"
+## Default motion ranges
+
+The included configs use approximately:
+
+```text
+slow       cruise 1.5-3.0 m/s
+medium     cruise 3.0-5.5 m/s
+fast       cruise 5.5-8.0 m/s
+aggressive cruise 7.5-11.0 m/s
 ```
 
-Notes:
+Individual frames can fall outside the cruise range because of acceleration/deceleration events and turn slowdown, subject to each profile's configured min/max speed.
 
-- `generation.num_workers: 8` by default
-- augmentation stays on CPU
-- often very competitive because OpenCV warping/compositing is CPU-heavy
+## Noise/domain randomization
 
-### 3) Quick smoke test
+Noise strength is sampled once per sequence and remains consistent in severity across that sequence while the per-frame realization changes smoothly or stochastically as appropriate.
 
-```bash
-python scripts/generate.py \
-  --config configs/smoke.yaml \
-  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
-  --output "../data/synth_smoke_$(date +%m%d)"
+Included effects:
+
+- brightness
+- contrast
+- saturation
+- gamma
+- color-temperature shift
+- Gaussian blur
+- motion blur
+- Gaussian noise
+- multiplicative speckle noise
+- JPEG degradation
+- vignette
+- broad shadows
+- lens flare/glare proxy
+
+Camera calibration itself is never randomized.
+
+## Output contract
+
+Each dataset contains:
+
+```text
+dataset_root/
+├── dataset.json
+├── gate_geometry.json
+├── splits/
+│   ├── train_sequences.txt
+│   ├── validation_sequences.txt
+│   └── test_sequences.txt
+└── sequences/
+    ├── seq_000000/
+    │   ├── sequence.json
+    │   ├── frames.jsonl
+    │   ├── rgb/
+    │   └── instance_masks/
+    └── ...
 ```
 
-## Command-line overrides
+Per-frame records include camera pose, drone state, velocity, acceleration, target speed, motion profile, route progress, persistent gate track IDs, frame-local mask IDs, 2-D/3-D keypoints, gate pose, distance/depth, visibility, occlusion, truncation, and bounding boxes.
 
-You can override the worker count or photometric backend directly:
+## Install with uv
+
+From the repo root:
+
+```bash
+uv venv --python 3.11
+source .venv/bin/activate
+uv pip install -e '.[gpu]'
+```
+
+Verify the package and CUDA:
+
+```bash
+python - <<'PY'
+import gatesynth
+import torch
+print("gatesynth:", gatesynth.__file__)
+print("torch:", torch.__version__)
+print("cuda available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
+PY
+```
+
+If you intentionally want CPU-only:
+
+```bash
+uv venv --python 3.11
+source .venv/bin/activate
+uv pip install -e .
+```
+
+## First run: smoke test
+
+```bash
+DATE=0914
+OUT="../data/synth_smoke_diverse_${DATE}"
+
+python scripts/generate.py \
+  --config configs/smoke_real_camera_diverse.yaml \
+  --gate-skin ../assets/SAMPLE_GATE_aigp.jpg \
+  --output "$OUT" \
+  --photometric-backend auto \
+  --device cuda \
+  --workers 1
+```
+
+Validate it:
+
+```bash
+python scripts/validate_dataset.py "$OUT"
+```
+
+Inspect camera + trajectory diversity:
+
+```bash
+python scripts/inspect_dataset.py "$OUT"
+```
+
+A correct camera check should report exactly one K and one resolution:
+
+```text
+unique_camera_K: 1
+unique_resolutions: 1
+K = [[320,0,320],[0,320,180],[0,0,1]]
+resolution = 640x360
+```
+
+## Large GPU-oriented run
+
+The included large config defaults to 2,000 sequences.
+
+```bash
+DATE=0914
+OUT="../data/synth_large_realcam_diverse_${DATE}"
+
+python scripts/generate.py \
+  --config configs/large_scale_gpu_real_camera_diverse.yaml \
+  --gate-skin ../assets/SAMPLE_GATE_aigp.jpg \
+  --output "$OUT" \
+  --workers 1 \
+  --photometric-backend auto \
+  --device cuda \
+  --frame-batch-size 32
+```
+
+The GPU mode batches the expensive photometric corruption on CUDA. Projective gate rendering and disk I/O still use CPU/OpenCV, so one GPU worker is intentional; launching several CUDA worker processes usually hurts throughput or VRAM stability.
+
+## Generate a custom number of sequences
+
+For 500 sequences:
 
 ```bash
 python scripts/generate.py \
-  --config configs/large_scale_gpu.yaml \
-  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
+  --config configs/large_scale_gpu_real_camera_diverse.yaml \
+  --gate-skin ../assets/SAMPLE_GATE_aigp.jpg \
+  --output ../data/synth_500_diverse_0914 \
+  --sequences 500 \
+  --workers 1 \
+  --photometric-backend auto \
+  --device cuda \
+  --frame-batch-size 32
+```
+
+For 5,000 sequences:
+
+```bash
+python scripts/generate.py \
+  --config configs/large_scale_gpu_real_camera_diverse.yaml \
+  --gate-skin ../assets/SAMPLE_GATE_aigp.jpg \
+  --output ../data/synth_5000_diverse_0914 \
+  --sequences 5000 \
+  --workers 1 \
+  --photometric-backend auto \
+  --device cuda \
+  --frame-batch-size 32
+```
+
+## CPU-parallel alternative
+
+On some machines OpenCV warping/JPEG/disk I/O becomes the bottleneck rather than augmentation. Benchmark this mode too:
+
+```bash
+DATE=0914
+OUT="../data/synth_large_realcam_diverse_cpu_${DATE}"
+
+python scripts/generate.py \
+  --config configs/large_scale_cpu_parallel_real_camera_diverse.yaml \
+  --gate-skin ../assets/SAMPLE_GATE_aigp.jpg \
+  --output "$OUT" \
+  --workers 8 \
+  --photometric-backend cpu \
+  --device cpu
+```
+
+Do not combine many process workers with the CUDA augmentation backend unless you deliberately want several processes competing for the same GPU.
+
+## Reproducibility
+
+The generator is deterministic given the same global seed, sequence index, config, and code version.
+
+Override the seed with:
+
+```bash
+python scripts/generate.py \
+  --config configs/large_scale_gpu_real_camera_diverse.yaml \
+  --gate-skin ../assets/SAMPLE_GATE_aigp.jpg \
+  --output ../data/test_seed_123 \
+  --sequences 50 \
+  --seed 123
+```
+
+## Important config sections
+
+### Course direction/placement diversity
+
+Edit `course:`:
+
+```yaml
+course:
+  gates_min: 3
+  gates_max: 5
+  course_spacing_m: [4.0, 8.0]
+  gate_height_m: [0.9, 2.8]
+  gate_yaw_deg: [-35.0, 35.0]
+  gate_pitch_deg: [-15.0, 15.0]
+  gate_roll_deg: [-12.0, 12.0]
+```
+
+`course_styles` controls turn severity.
+
+### Flight-path diversity
+
+Edit `trajectory:`:
+
+```yaml
+trajectory:
+  approach_distance_m: 5.0
+  exit_distance_m: 3.0
+  path_lateral_offset_m: 0.55
+  path_vertical_offset_m: 0.40
+  camera_lookahead_m: 4.5
+  target_gate_look_blend: 0.58
+```
+
+### Speed diversity
+
+Edit `motion:`. Each profile controls:
+
+- cruise-speed range
+- acceleration limit
+- speed-variation amplitude
+- camera orientation jitter
+- turn slowdown
+- minimum/maximum speed
+- start-speed fraction
+
+## Recommended workflow
+
+Before launching thousands of sequences:
+
+```bash
+# 1. Generate 20-50 sequences
+python scripts/generate.py \
+  --config configs/large_scale_gpu_real_camera_diverse.yaml \
+  --gate-skin ../assets/SAMPLE_GATE_aigp.jpg \
+  --output ../data/synth_benchmark \
+  --sequences 25 \
   --workers 1 \
   --photometric-backend auto \
   --device cuda
+
+# 2. Validate
+python scripts/validate_dataset.py ../data/synth_benchmark
+
+# 3. Inspect diversity
+python scripts/inspect_dataset.py ../data/synth_benchmark
 ```
 
-or:
-
-```bash
-python scripts/generate.py \
-  --config configs/large_scale_cpu_parallel.yaml \
-  --gate-skin ../assets/gate_skins/SAMPLE_GATE_aigp.jpg \
-  --workers 12
-```
-
-## Tuning guidance
-
-### If you want maximum total throughput
-
-Try both:
-
-- `large_scale_gpu.yaml`
-- `large_scale_cpu_parallel.yaml`
-
-because the bottleneck depends on your exact machine:
-
-- if **photometric corruption** dominates, GPU mode wins
-- if **OpenCV warping/compositing + JPEG writing** dominates, CPU-parallel mode may win
-
-### Good starting values on an RTX 4070 machine
-
-GPU mode:
-
-- `image: 1280x720`
-- `frame_batch_size: 32`
-- `num_workers: 1`
-
-CPU-parallel mode:
-
-- `num_workers: 6` to `10`
-- leave a little headroom for OS / disk I/O
-
-## Validation
-
-```bash
-python scripts/validate_dataset.py  \
-  --output "../data/synth_large_$(date +%m%d)"
-```
-
-## Speed notes
-
-For very large runs, these settings save time:
-
-- `write_checksums: false`
-- use JPEG quality around `90-93`
-- prefer SSD output
-- use a real background directory only if you need it
-- benchmark GPU mode vs CPU-parallel mode on ~50 sequences before launching thousands
-
-## Output compatibility
-
-This accelerated version preserves the same canonical dataset structure and semantics, so your future Isaac exporter can target the exact same format and all model loaders can remain unchanged.
+Then launch the 2,000/5,000-sequence run only after confirming the visual output and throughput.

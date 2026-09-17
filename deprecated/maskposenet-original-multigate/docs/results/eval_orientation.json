@@ -1,0 +1,6 @@
+{
+  "frames": 200,
+  "gate_detected_rate": 0.995,
+  "normal_err_deg_mean": 19.888,
+  "normal_err_deg_median": 8.728
+}

@@ -1,0 +1,60 @@
+# GatePoseNet: temporal multimodal gate-relative pose regression on the
+# sam3-autolabeler trajectory datasets (fly-through / hover / passby sequences
+# with exact analytic GT, full-attitude + random-background DR, pose-safe).
+name: gateposenet_traj
+
+model:
+  in_channels: 3
+  base_channels: [16, 32, 64, 128, 256]
+  width_factor: 2          # ~1M-param class, per-frame encoder
+  head_hidden: 256
+  max_depth_m: 25.0
+
+data:
+  train_roots:
+    - ../sam3-autolabeler-private/data/synthetic_output/aigp_traj_train
+  val_roots:
+    - ../sam3-autolabeler-private/data/synthetic_output/aigp_traj_val
+  window: 8                # rolling-window length (frames @ 30 Hz)
+  stride: 4
+  val_stride: 8
+  height: 192              # model input (native 640x360 -> 320x192)
+  width: 320
+  native_width: 640        # for pixel-space metric reporting
+  native_height: 360
+  pose_sup_max_m: 20.0
+  nominal_focal: 320.0
+  ego_dropout: 0.25        # modality dropout: train robust to missing ego-motion
+
+train:
+  epochs: 60
+  batch_size: 16
+  optimizer: adamw
+  lr: 0.001
+  weight_decay: 0.01
+  num_workers: 8
+  amp: true
+  grad_clip: 1.0
+  seed: 42
+  log_interval: 20
+
+schedule:
+  milestones: [20, 40, 52]
+  gamma: 0.31622776601
+
+loss:
+  w_seg: 1.0
+  w_corners: 5.0
+  w_corner_in: 0.5
+  w_center: 5.0
+  w_position: 2.0
+  w_depth: 2.0
+  w_rot: 2.0
+  w_vis: 1.0
+  w_kcal: 0.2
+  rot_blind_scale: 0.3
+  pos_blind_scale: 0.3
+  symmetry_aware: true     # gate is a D4-symmetric square ring
+
+output:
+  dir: runs/gateposenet_traj

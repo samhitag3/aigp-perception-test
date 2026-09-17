@@ -12,13 +12,9 @@ replace mask path & run notebook
 
 ## images_to_video.py
 ```bash
-uv add opencv-python
-```
-
-```bash
-uv run python utils/images_to_video.py \
-  data/refined_target/sim0721-10/images \
-  --output data/refined_target/sim0721-10/video.mp4 \
+uv run --with opencv-python python utils/images_to_video.py \
+  data/ISAAC_TEST/images \
+  --output data/ISAAC_TEST/video.mp4 \
   --fps 60
 ```
 

@@ -1,0 +1,12 @@
+camera:
+  width_px: 640
+  height_px: 360
+  fx: 320.0
+  fy: 320.0
+  cx: 320.0
+  cy: 180.0
+  distortion_model: none
+  distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+  # Derived from K and resolution:
+  # HFOV = 2*atan(width/(2*fx)) = 90.0 deg
+  # VFOV = 2*atan(height/(2*fy)) ~= 58.716 deg

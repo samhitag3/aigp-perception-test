@@ -7,7 +7,7 @@ OUTER_W = 2.7
 OUTER_H = 2.7
 INNER_W = 1.5
 INNER_H = 1.5
-DEPTH = 0.26
+DEPTH = 0.08
 
 KEYPOINT_ORDER = [
     "outer_tl", "outer_tr", "outer_br", "outer_bl",
@@ -45,6 +45,28 @@ def make_gate_T_world(position_xyz, roll_deg=0.0, pitch_deg=0.0, yaw_deg=0.0) ->
     Rlocal = Rotation.from_euler("xyz", [roll_deg, pitch_deg, yaw_deg], degrees=True).as_matrix()
     T = np.eye(4, dtype=np.float64)
     T[:3, :3] = R0 @ Rlocal
+    T[:3, 3] = np.asarray(position_xyz, dtype=np.float64)
+    return T
+
+
+def _rot_z(theta_rad: float) -> np.ndarray:
+    c = math.cos(theta_rad)
+    s = math.sin(theta_rad)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=np.float64)
+
+
+def make_gate_T_world_course(position_xyz, course_heading_rad: float, roll_deg=0.0, pitch_deg=0.0, yaw_offset_deg=0.0) -> np.ndarray:
+    """Place a gate so local +Z roughly follows the course heading.
+
+    `course_heading_rad` is a world-frame XY heading. `yaw_offset_deg` perturbs the
+    gate normal away from the ideal course direction. Roll/pitch are local gate
+    tilts, preserving physical corner identities.
+    """
+    heading = float(course_heading_rad) + math.radians(float(yaw_offset_deg))
+    R_world_heading = _rot_z(heading)
+    Rlocal = Rotation.from_euler("xy", [roll_deg, pitch_deg], degrees=True).as_matrix()
+    T = np.eye(4, dtype=np.float64)
+    T[:3, :3] = R_world_heading @ base_gate_R_world() @ Rlocal
     T[:3, 3] = np.asarray(position_xyz, dtype=np.float64)
     return T
 
