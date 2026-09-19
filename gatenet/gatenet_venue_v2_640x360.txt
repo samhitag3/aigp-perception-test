@@ -1,0 +1,17 @@
+MODEL NOTES (bag-notes template from 10TB-TELEMETRY-DATA-STORAGE, adapted for model weights)
+
+Drone used: n/a (perception model). Trained on AI-GP venue footage: Florian's professional pilot lap + Neros DVR, and Alejandro's onboard Arducam bags of 2026-09-16 (3 walking + 1 manual flight).
+Date: 2026-09-17
+Location: AIGP physical course venue (indoor hall, red AI-GP gates)
+Context: GateNet gate SEGMENTATION for the deployed perception chain (GateNet -> mask-to-pose observer -> pose refiner). Drop-in replacement for gate_perception/model_artifacts/gatenet.onnx (same I/O).
+Bag file name(s): gatenet_venue_v2_640x360.onnx (+ gatenet_venue_v2.pt checkpoint, gatenet_venue_v2.yaml config)
+Flight stack version (repo / branch / commit or date tag): airobotics-ucberkeley/perception-model-training @ timothy/mask-to-pose 3eb8a7f; fine-tuned from Rohan's runs/gatenet_aigp_6/best.pt (rohan/dev 7f1dd98) via scripts/finetune.py --model gatenet
+Helpful notes on what you ran (controller type/ localization method): U-Net, 5 output scales, width factor 4; input RGB 1x3x360x640 scaled to [0,1] (flightstack prepare_gatenet_image: cv2.resize to 640x360, /255, CHW); output sigmoid mask 1x1x360x640. Training data 6213 frames (2252 venue with hand-checked labels + 3961 Arducam), labels from SAM3 + cleanup (opening NOT part of the mask, double gate = 2 gates), trained on the ORIGINAL dark frames (labels drawn on brightened copies), 20 epochs, lr 1e-4, AdamW, Dice+2xBCE.
+What was tested: pad-free held-out split BY CLIP - the last two chunks of the real manual flight (484 frames, never trained on) and the venue held-out clips (620 frames: archer_lap_c02, dvr_slow_fast_orbit_c01, dvr_two_lap_clean_c01), scored at 640x360, threshold 0.5, against the deployed gatenet.onnx and the venue-only v1.
+Outcome: held-out MANUAL FLIGHT IoU 0.790 (precision 0.949, recall 0.824) vs deployed 0.702 (0.916/0.750) and venue-only v1 0.630 (0.951/0.651). Held-out VENUE clips IoU 0.876 vs deployed 0.820, v1 0.875. ONNX scores identically to the checkpoint (0.8752 on the venue clips).
+Sensors/topics recorded: n/a (weights). Input camera: Arducam 1920x1080 @60 fps (/arducam/image_raw/compressed), pilot lap 960x540, DVR 640x480.
+Adverse events (if any): none
+Known issues / anomalies: the Arducam labels are SAM3 auto labels (not human-checked), so the held-out flight number is agreement with automatic labels - the same yardstick for all three models, but it carries label noise; a 48-frame human-verified test set is being prepared. Frames the cleanup flagged for review were excluded from training. The Arducam bags carry no camera calibration and no pose, so no pose supervision was used.
+Rough contents summary (what happens when): gatenet_venue_v2_640x360.onnx (opset 17, sigmoid included), gatenet_venue_v2.pt (torch checkpoint), gatenet_venue_v2.yaml (training config), gatenet_venue_v2_heldout_flight.jpg (held-out flight: frame | v2 | v1, green = matches label, blue = missed, red = extra).
+Size / checksums: onnx 6999929 bytes, md5 689408e8d36c91618c871f853aae667e, sha256 46adac8a77d1cdf5be62a6ac10ab9e55ec3db2533ba43c84ff48b6f037f79b40; checkpoint 21087075 bytes, md5 b815e0802d2f6fac4af4a25bd4918286
+Uploaded by: Richik Pal

@@ -9,10 +9,11 @@ from __future__ import annotations
 import argparse, json, math, re, time, subprocess, sys
 from pathlib import Path
 from typing import Iterator
-import cv2, numpy as np, torch, torch.nn.functional as F
+import cv2, numpy as np, torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from gatenet.utils import load_checkpoint, load_config, pick_device
 from gateposenet.model import build_gateposenet_mg
+from gateposenet.geometry_filter import config_from_mapping, config_as_dict, filter_queries
 
 SUFFIXES={'.png','.jpg','.jpeg','.bmp','.tif','.tiff','.webp'}
 PALETTE=np.asarray([[230,25,75],[60,180,75],[255,225,25],[0,130,200],[245,130,48],[145,30,180],[70,240,240],[240,50,230],[210,245,60],[250,190,212],[0,128,128],[220,190,255],[170,110,40],[255,250,200],[128,0,0],[170,255,195]],dtype=np.uint8)
@@ -102,11 +103,16 @@ def main():
     ap.add_argument('--device',default='cuda'); ap.add_argument('--fps',type=float,default=60.0)
     ap.add_argument('--presence-th',type=float,default=None,help='defaults to config inference.presence_threshold or 0.5'); ap.add_argument('--mask-th',type=float,default=None,help='defaults to config inference.mask_threshold or 0.5'); ap.add_argument('--overlay-alpha',type=float,default=.35)
     ap.add_argument('--max-frames',type=int,default=None); ap.add_argument('--gpu-sample-every',type=int,default=30)
+    ap.add_argument('--no-geometry-filter', action='store_true',
+                    help='disable runtime corner/mask geometry sanity filtering')
     args=ap.parse_args()
     cfg=load_config(args.config); device=pick_device(args.device)
     infer_cfg=cfg.get('inference',{})
     presence_th=float(args.presence_th if args.presence_th is not None else infer_cfg.get('presence_threshold',0.5))
     mask_th=float(args.mask_th if args.mask_th is not None else infer_cfg.get('mask_threshold',0.5))
+    geom_cfg=config_from_mapping(infer_cfg.get('geometry_filter',{}))
+    if args.no_geometry_filter:
+        geom_cfg=type(geom_cfg)(**{**config_as_dict(geom_cfg),'enabled':False})
     model=build_gateposenet_mg(cfg['model']).to(device).eval(); load_checkpoint(args.checkpoint,model,map_location=device)
     h=int(cfg['data'].get('height',192)); w=int(cfg['data'].get('width',320))
     out=Path(args.out_dir); (out/'overlays').mkdir(parents=True,exist_ok=True); (out/'pred_masks').mkdir(parents=True,exist_ok=True)
@@ -125,17 +131,32 @@ def main():
         if device.type=='cuda': ev1.record(); torch.cuda.synchronize(); gm=ev0.elapsed_time(ev1)
         else: gm=(time.perf_counter()-t0)*1000
         wm=(time.perf_counter()-t0)*1000
-        pres=torch.sigmoid(pred['presence_logit'])[0].detach().cpu().numpy()
-        keep=np.where(pres>=presence_th)[0].tolist()
-        masks=torch.sigmoid(pred['mask_logit'][0]).detach().cpu()
-        corners=pred['corners_uv'][0].detach().cpu().numpy(); pos=pred['position'][0].detach().cpu().numpy()
+        pres=torch.sigmoid(pred['presence_logit'])[0].float().detach().cpu().numpy()
+        masks=torch.sigmoid(pred['mask_logit'][0]).float().detach().cpu().numpy()
+        corners=pred['corners_uv'][0].float().detach().cpu().numpy()
+        centers=pred['center_uv'][0].float().detach().cpu().numpy()
+        pos=pred['position'][0].float().detach().cpu().numpy()
+
+        # Upsample all Q masks once.  The geometry filter compares predicted
+        # masks/corners against the actual UNION mask that was supplied to the
+        # network, so high-presence but giant unsupported quads are rejected.
+        full_masks=np.stack([
+            cv2.resize(masks[q],(W,H),interpolation=cv2.INTER_LINEAR)>=mask_th
+            for q in range(masks.shape[0])
+        ],axis=0)
+        input_union=(labels>0)
+        keep,geom_diag,geom_reasons=filter_queries(
+            presence=pres, corners_uv=corners, center_uv=centers,
+            pred_masks=full_masks, input_union_mask=input_union,
+            presence_threshold=presence_th, cfg=geom_cfg)
+
         base=(getrgb(idx) if getrgb else None)
         if base is None: base=white_mask_base(labels)
         if base.shape[:2]!=(H,W): base=cv2.resize(base,(W,H))
         overlay=base.copy(); pred_id=np.zeros((H,W),np.uint16); gates=[]
         for j,q in enumerate(keep):
             bgr=gate_bgr(j)
-            pm=F.interpolate(masks[q][None,None],size=(H,W),mode='bilinear',align_corners=False)[0,0].numpy()>=mask_th
+            pm=full_masks[q]
             pred_id[pm]=j+1
             alpha_blend_mask(overlay, pm, bgr, args.overlay_alpha)
             uv=corners[q]*np.array([W,H],np.float32); pts=np.round(uv).astype(np.int32)
@@ -143,7 +164,7 @@ def main():
             cv2.polylines(overlay,[pts],True,(0,0,0),6,cv2.LINE_AA); cv2.polylines(overlay,[pts],True,bgr,3,cv2.LINE_AA)
             for p in pts: cv2.circle(overlay,tuple(p),7,(0,0,0),-1,cv2.LINE_AA); cv2.circle(overlay,tuple(p),4,bgr,-1,cv2.LINE_AA)
             c=pts.mean(axis=0).astype(int); cv2.putText(overlay,f'G{j+1} {pres[q]:.2f} xyz={pos[q,0]:.2f},{pos[q,1]:.2f},{pos[q,2]:.2f}',tuple(c),cv2.FONT_HERSHEY_SIMPLEX,.45,(0,0,0),3,cv2.LINE_AA); cv2.putText(overlay,f'G{j+1} {pres[q]:.2f} xyz={pos[q,0]:.2f},{pos[q,1]:.2f},{pos[q,2]:.2f}',tuple(c),cv2.FONT_HERSHEY_SIMPLEX,.45,bgr,1,cv2.LINE_AA)
-            gates.append({'query':int(q),'score':float(pres[q]),'corners_px':uv.tolist(),'position_camera_m':pos[q].tolist()})
+            gates.append({'query':int(q),'score':float(pres[q]),'corners_px':uv.tolist(),'position_camera_m':pos[q].tolist(),'geometry':geom_diag.get(int(q),{})})
         if not getrgb:
             # outline input instances too, so neighboring gates remain distinct on B/W base
             for mid in [int(v) for v in np.unique(labels) if int(v)>0]:
@@ -156,13 +177,16 @@ def main():
         cv2.imwrite(str(out/'overlays'/f'frame_{idx:06d}.jpg'),overlay); cv2.imwrite(str(out/'pred_masks'/f'frame_{idx:06d}.png'),pred_id)
         if writer is None: writer=cv2.VideoWriter(str(out/'overlay.mp4'),cv2.VideoWriter_fourcc(*'mp4v'),args.fps,(W,H))
         writer.write(overlay)
-        rows.append({'frame_index':idx,'source_name':name,'model_gpu_ms':gm,'model_wall_ms':wm,'end_to_end_ms':e2e,'gpu_util_percent_sample':util,'gates':gates})
+        rows.append({'frame_index':idx,'source_name':name,'model_gpu_ms':gm,'model_wall_ms':wm,'end_to_end_ms':e2e,'gpu_util_percent_sample':util,'gates':gates,'geometry_rejected':{str(k):v for k,v in geom_diag.items() if not v.get('accepted',False)},'geometry_rejection_counts':dict(geom_reasons)})
     if writer: writer.release()
     if getrgb is not None and hasattr(getrgb,'cap'): getrgb.cap.release()
     def stats(a):
         if not a:return {}
         x=np.asarray(a); return {'mean':float(x.mean()),'median':float(np.median(x)),'p95':float(np.percentile(x,95)),'p99':float(np.percentile(x,99)),'hz_from_mean':float(1000/x.mean())}
-    summary={'frames':len(rows),'warmup_excluded':min(warm,len(rows)),'model_gpu_ms':stats(gpu_ms),'model_wall_ms':stats(wall_ms),'end_to_end_ms':stats(e2e_ms),'gpu_util_percent_mean_sampled':float(np.mean(utils)) if utils else None,'cuda_memory_allocated_mb':float(torch.cuda.max_memory_allocated()/2**20) if device.type=='cuda' else None,'cuda_memory_reserved_mb':float(torch.cuda.max_memory_reserved()/2**20) if device.type=='cuda' else None,'target_90hz_budget_ms':1000/90,'presence_threshold':presence_th,'mask_threshold':mask_th}
+    total_rejects={}
+    for r in rows:
+        for reason,count in r.get('geometry_rejection_counts',{}).items(): total_rejects[reason]=total_rejects.get(reason,0)+int(count)
+    summary={'frames':len(rows),'warmup_excluded':min(warm,len(rows)),'model_gpu_ms':stats(gpu_ms),'model_wall_ms':stats(wall_ms),'end_to_end_ms':stats(e2e_ms),'gpu_util_percent_mean_sampled':float(np.mean(utils)) if utils else None,'cuda_memory_allocated_mb':float(torch.cuda.max_memory_allocated()/2**20) if device.type=='cuda' else None,'cuda_memory_reserved_mb':float(torch.cuda.max_memory_reserved()/2**20) if device.type=='cuda' else None,'target_90hz_budget_ms':1000/90,'presence_threshold':presence_th,'mask_threshold':mask_th,'geometry_filter':config_as_dict(geom_cfg),'geometry_rejections':total_rejects}
     (out/'frames.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows)); (out/'inference.json').write_text(json.dumps(summary,indent=2)+'\n')
     print(json.dumps(summary,indent=2))
 if __name__=='__main__': main()

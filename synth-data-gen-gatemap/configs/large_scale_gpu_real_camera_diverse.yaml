@@ -1,0 +1,409 @@
+seed: 42
+output_root: ../data/synth_gatemap_failures_gpu_0917
+dataset_id: synth_gatemap_failures_gpu_0917
+schema_version: 1.0.0
+image:
+  width: 640
+  height: 360
+  jpeg_quality: 93
+camera:
+  model: pinhole
+  width: 640
+  height: 360
+  fx: 417.0321193091858
+  fy: 417.0321193091858
+  cx: 320.0
+  cy: 180.0
+  hfov_deg: 75.0
+  shutter:
+    type: rolling
+    readout_time_s: null
+    exposure_time_s: null
+  distortion:
+    enabled: false
+  randomization:
+    resolution: false
+    focal_length: false
+    principal_point: false
+    distortion: false
+sequences:
+  count: 2000
+  fps: 60.0
+course:
+  use_fixed_track_map: true
+  source_name: Drone_Race_Track_Gate_Coordinates_with_doublegate.pdf
+  track_width_ft: 85.0
+  track_length_ft: 165.0
+  gate_center_z_m: 1.35
+  position_jitter_m: 0.0
+  height_jitter_m: 0.0
+  yaw_jitter_deg: 0.0
+  track_gates:
+  - name: gate_01
+    x_ft: 12.0
+    y_ft: 71.0
+    rotation_deg: 0.0
+  - name: gate_02
+    x_ft: 16.0
+    y_ft: 39.0
+    rotation_deg: 0.0
+  - name: gate_03
+    x_ft: 40.0
+    y_ft: 17.0
+    rotation_deg: 90.0
+  - name: gate_04
+    x_ft: 72.0
+    y_ft: 40.0
+    rotation_deg: 180.0
+  - name: gate_05
+    x_ft: 66.0
+    y_ft: 70.0
+    rotation_deg: 215.0
+  - name: gate_06
+    x_ft: 41.0
+    y_ft: 86.0
+    rotation_deg: 90.0
+  - name: gate_07
+    x_ft: 70.5
+    y_ft: 106.6
+    rotation_deg: 180.0
+  - name: gate_08
+    x_ft: 60.0
+    y_ft: 129.0
+    rotation_deg: 215.0
+  - name: gate_10
+    x_ft: 13.0
+    y_ft: 110.0
+    rotation_deg: 0.0
+  double_gate:
+    enabled: true
+    structure_id: double_gate_01
+    x_ft: 39.7
+    y_ft: 147.7
+    vertical_center_spacing_m: 2.7
+    route_after_gate: 8
+    top_rotation_deg: 180.0
+    bottom_rotation_deg: 0.0
+trajectory:
+  approach_distance_m: 4.5
+  exit_distance_m: 3.0
+  path_dense_samples: 6144
+  gate_crossing_standoff_m: 1.8
+  gate_crossing_lateral_jitter_m: 0.22
+  gate_crossing_vertical_jitter_m: 0.16
+  gate_crossing_safety_margin_m: 0.22
+  # Gate 6 hairpin
+  gate6_front_bypass_standoff_m: 2.0
+  gate6_behind_bypass_standoff_m: 5.0
+  gate6_bypass_lateral_clearance_m: 2.4
+  gate6_approach_standoff_m: 2.4
+  gate6_exit_standoff_m: 2.0
+  double_gate_crossing_standoff_m: 2.0
+  double_gate_turnaround_extra_m: 2.5
+  double_gate_turnaround_lateral_m: 2.5
+  camera_lookahead_m: 4.0
+  gate_pass_margin_m: 0.35
+motion:
+  profile_probabilities:
+    slow: 0.15
+    medium: 0.35
+    fast: 0.35
+    aggressive: 0.15
+  max_frames_per_sequence: 4000
+  speed_event_count_range:
+  - 2
+  - 7
+  speed_event_fraction_range:
+  - -0.45
+  - 0.55
+  speed_event_width_fraction_range:
+  - 0.025
+  - 0.12
+  profiles:
+    slow:
+      cruise_speed_mps_range:
+      - 1.8
+      - 3.5
+      accel_limit_mps2_range:
+      - 0.8
+      - 4.0
+      speed_variation_fraction_range:
+      - 0.15
+      - 0.4
+      accel_limit_variation_fraction_range:
+      - 0.1
+      - 0.45
+      orientation_jitter_deg_range:
+      - 2.5
+      - 6.0
+      turn_slowdown_strength: 2.8
+      min_speed_mps: 0.7
+      max_speed_mps: 5.0
+      start_speed_fraction: 0.6
+    medium:
+      cruise_speed_mps_range:
+      - 3.0
+      - 6.0
+      accel_limit_mps2_range:
+      - 1.5
+      - 7.0
+      speed_variation_fraction_range:
+      - 0.15
+      - 0.45
+      accel_limit_variation_fraction_range:
+      - 0.1
+      - 0.5
+      orientation_jitter_deg_range:
+      - 3.0
+      - 8.0
+      turn_slowdown_strength: 2.4
+      min_speed_mps: 1.2
+      max_speed_mps: 8.0
+      start_speed_fraction: 0.68
+    fast:
+      cruise_speed_mps_range:
+      - 5.0
+      - 9.0
+      accel_limit_mps2_range:
+      - 2.5
+      - 10.0
+      speed_variation_fraction_range:
+      - 0.12
+      - 0.42
+      accel_limit_variation_fraction_range:
+      - 0.12
+      - 0.55
+      orientation_jitter_deg_range:
+      - 4.0
+      - 10.0
+      turn_slowdown_strength: 2.0
+      min_speed_mps: 2.5
+      max_speed_mps: 11.0
+      start_speed_fraction: 0.75
+    aggressive:
+      cruise_speed_mps_range:
+      - 7.0
+      - 12.0
+      accel_limit_mps2_range:
+      - 4.0
+      - 14.0
+      speed_variation_fraction_range:
+      - 0.18
+      - 0.5
+      accel_limit_variation_fraction_range:
+      - 0.15
+      - 0.6
+      orientation_jitter_deg_range:
+      - 6.0
+      - 14.0
+      turn_slowdown_strength: 1.7
+      min_speed_mps: 3.5
+      max_speed_mps: 14.0
+      start_speed_fraction: 0.8
+split:
+  train: 0.8
+  validation: 0.1
+  test: 0.1
+render:
+  include_side_faces: true
+  side_face_brightness: 0.55
+  backgrounds_dir: null
+  procedural_background_probability: 1.0
+noise:
+  tier_probabilities:
+    clean: 0.08
+    low: 0.28
+    medium: 0.42
+    high: 0.22
+  tiers:
+    clean:
+      brightness:
+      - 0.98
+      - 1.02
+      contrast:
+      - 0.98
+      - 1.02
+      saturation:
+      - 0.98
+      - 1.02
+      gamma:
+      - 0.98
+      - 1.02
+      gaussian_blur_sigma:
+      - 0.0
+      - 0.15
+      motion_blur_px:
+      - 0
+      - 1
+      gaussian_noise_std:
+      - 0.0
+      - 1.0
+      speckle_std:
+      - 0.0
+      - 0.002
+      jpeg_quality:
+      - 94
+      - 98
+      vignette_strength:
+      - 0.0
+      - 0.05
+      color_temp_shift:
+      - -0.02
+      - 0.02
+      shadow_strength:
+      - 0.0
+      - 0.04
+      flare_strength:
+      - 0.0
+      - 0.02
+    low:
+      brightness:
+      - 0.85
+      - 1.15
+      contrast:
+      - 0.85
+      - 1.18
+      saturation:
+      - 0.85
+      - 1.15
+      gamma:
+      - 0.85
+      - 1.15
+      gaussian_blur_sigma:
+      - 0.0
+      - 0.8
+      motion_blur_px:
+      - 0
+      - 5
+      gaussian_noise_std:
+      - 0.0
+      - 5.0
+      speckle_std:
+      - 0.0
+      - 0.015
+      jpeg_quality:
+      - 86
+      - 96
+      vignette_strength:
+      - 0.0
+      - 0.18
+      color_temp_shift:
+      - -0.08
+      - 0.08
+      shadow_strength:
+      - 0.0
+      - 0.15
+      flare_strength:
+      - 0.0
+      - 0.08
+    medium:
+      brightness:
+      - 0.65
+      - 1.35
+      contrast:
+      - 0.65
+      - 1.4
+      saturation:
+      - 0.65
+      - 1.35
+      gamma:
+      - 0.7
+      - 1.35
+      gaussian_blur_sigma:
+      - 0.0
+      - 1.6
+      motion_blur_px:
+      - 0
+      - 11
+      gaussian_noise_std:
+      - 0.0
+      - 11.0
+      speckle_std:
+      - 0.0
+      - 0.035
+      jpeg_quality:
+      - 72
+      - 94
+      vignette_strength:
+      - 0.0
+      - 0.35
+      color_temp_shift:
+      - -0.16
+      - 0.16
+      shadow_strength:
+      - 0.0
+      - 0.3
+      flare_strength:
+      - 0.0
+      - 0.18
+    high:
+      brightness:
+      - 0.45
+      - 1.6
+      contrast:
+      - 0.45
+      - 1.65
+      saturation:
+      - 0.45
+      - 1.55
+      gamma:
+      - 0.55
+      - 1.6
+      gaussian_blur_sigma:
+      - 0.0
+      - 2.8
+      motion_blur_px:
+      - 0
+      - 21
+      gaussian_noise_std:
+      - 0.0
+      - 20.0
+      speckle_std:
+      - 0.0
+      - 0.07
+      jpeg_quality:
+      - 55
+      - 90
+      vignette_strength:
+      - 0.0
+      - 0.55
+      color_temp_shift:
+      - -0.28
+      - 0.28
+      shadow_strength:
+      - 0.0
+      - 0.5
+      flare_strength:
+      - 0.0
+      - 0.35
+generation:
+  num_workers: 1
+  write_checksums: false
+acceleration:
+  photometric_backend: cuda
+  device: cuda
+  frame_batch_size: 64
+failures:
+  enabled: true
+  success_fraction: 0.5
+  distribution:
+    gate_01: 0.01
+    gate_02: 0.01
+    gate_03: 0.02
+    gate_04: 0.02
+    gate_05: 0.03
+    gate_06: 0.05
+    gate_07: 0.05
+    gate_08: 0.05
+    double_gate_01_top: 0.08
+    double_gate_01_bottom: 0.08
+    gate_10: 0.1
+  impact:
+    ring_center_offset_m: 1.05
+    along_bar_jitter_m: 0.22
+    pre_impact_standoff_m: 1.8
+    penetration_m: 0.08
+    drop_distance_m: 1.25
+    drop_forward_m: 0.25
+    min_final_z_m: 0.12
+    drop_to_ground: true

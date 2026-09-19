@@ -1,0 +1,22 @@
+# GateNet v2: venue (pilot lap + DVR, hand-checked) + Alejandro's Arducam bags (SAM3 auto labels, flagged frames left
+# out), trained on the ORIGINAL dark frames at the deploy resolution 640x360, from the venue v1 fine-tune.
+_base: gatenet_finetune.yaml
+name: gatenet_real_venue_v2
+data:
+  mode: single
+  root: /home/richik.pal/Desktop/Richik/data/gatenet_v2/train
+  height: 360
+  width: 640
+  val_frac: 0.05
+  mask_suffix: ""
+train:
+  epochs: 20
+  batch_size: 12
+  lr: 0.0001
+  num_workers: 4
+  amp: true
+  seed: 42
+schedule:
+  milestones: [10, 16]
+output:
+  dir: runs/gatenet_real_venue_v2

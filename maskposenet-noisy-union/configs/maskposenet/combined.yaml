@@ -139,5 +139,28 @@ tuning:
   latency_warmup: 20
   latency_iters: 40
 
+inference:
+  # The presence threshold is calibrated after final training.  A generated
+  # best_config_with_threshold.yaml will overwrite this value.
+  presence_threshold: 0.5
+  mask_threshold: 0.5
+
+  # Runtime-only sanity checks.  These do not change the network or require
+  # retraining.  They reject high-confidence query slots whose huge/warped
+  # keypoint quad is not supported by the UNION mask that entered the model.
+  geometry_filter:
+    enabled: true
+    support_radius_px: 10.0
+    min_edge_support: 0.40
+    min_corner_support: 0.50
+    min_mask_input_precision: 0.12
+    min_pred_mask_pixels: 10
+    max_center_error_frac_diag: 0.18
+    max_quad_area_frac: 2.0
+    min_quad_area_px: 16.0
+    edge_samples_per_side: 24
+    min_inframe_edge_samples: 8
+    duplicate_mask_iou: 0.55
+
 output:
   dir: ../runs_union_noise
