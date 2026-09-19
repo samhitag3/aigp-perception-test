@@ -1,0 +1,87 @@
+# Vanilla GatePoseNetSingle — Isaac-only regime.
+# Architecture is unchanged. Stage-specific train manifests are selected on CLI.
+name: gateposenet_vanilla_isaac
+
+data:
+  dataset_root: ../data/refined_isaac_0908
+  dataset_name: refined_isaac_0908
+  train_manifest: splits/train_sequences.txt
+  val_manifest: splits/validation_sequences.txt
+  test_manifest: splits/test_sequences.txt
+  split_manifest_version: vanilla_seed42
+
+  window: 8
+  stride: 4
+  val_stride: 8
+  test_stride: 8
+  height: 192
+  width: 320
+  native_width: 640
+  native_height: 360
+  pose_sup_max_m: 20.0
+  nominal_focal: 320.0
+  ego_dropout: 0.25
+
+camera:
+  width_px: 640
+  height_px: 360
+  fx: 320.0
+  fy: 320.0
+  cx: 320.0
+  cy: 180.0
+  hfov_deg: 90.0
+  vfov_deg: 58.71550708558255
+
+model:
+  in_channels: 3
+  base_channels: [16, 32, 64, 128, 256]
+  width_factor: 2
+  head_hidden: 256
+  max_depth_m: 25.0
+
+train:
+  epochs: 60
+  batch_size: 16
+  optimizer: adamw
+  lr: 0.001
+  weight_decay: 0.01
+  num_workers: 8
+  amp: true
+  grad_clip: 1.0
+  seed: 42
+  log_interval: 20
+
+schedule:
+  milestones: [20, 40, 52]
+  gamma: 0.31622776601
+
+loss:
+  w_seg: 1.0
+  w_corners: 5.0
+  w_corner_in: 0.5
+  w_center: 5.0
+  w_position: 2.0
+  w_depth: 2.0
+  w_rot: 2.0
+  w_vis: 1.0
+  w_kcal: 0.2
+  rot_blind_scale: 0.3
+  pos_blind_scale: 0.3
+  symmetry_aware: true
+
+evaluation:
+  mask_threshold: 0.5
+  catastrophic_translation_m: 0.75
+  catastrophic_rotation_deg: 25.0
+  runtime_warmup_steps: 10
+  runtime_benchmark_steps: 50
+
+tuning:
+  objective: pos_err_rel
+  direction: minimize
+  seed: 42
+  epochs_per_trial: 15
+  trials: 20
+
+output:
+  dir: ../runs_vanilla/gateposenet_vanilla

@@ -1,0 +1,56 @@
+# Authoritative AI Grand Prix gate + camera specification.
+# Source: VADR-TS-002 Issue 00.02 (2026-05-08), sections 3.7 (gate) and 3.8
+# (camera); mirrored in sam3-autolabeler-private/synthetic/specs.py
+# (AIGP_GATE_SPEC). Every model in this repo that reasons about metric gate
+# pose reads gate geometry from here — do not re-type these numbers.
+
+gate:
+  outer_m: 2.7            # outer frame side length (2700 x 2700 mm)
+  inner_m: 1.5            # fly-through opening (1500 x 1500 mm)
+  depth_m: 0.26           # frame depth / Z thickness (260 mm)
+  border_frac: 0.2222     # (2.7 - 1.5) / 2 / 2.7 — ring thickness / outer side
+  color_rgb: [235, 38, 26]  # bright red frame
+  # The mask convention is the FRAME RING (the 600 mm border), not the opening.
+  corner_order: [TL, TR, BR, BL]
+  # The gate is a plain square ring: its orientation is only identifiable
+  # modulo the D4 symmetry group (4 rotations about the fly-through axis x
+  # front/back flip = 8 elements). Train/evaluate rotation and corner labels
+  # symmetry-aware (gateposenet.losses.gate_symmetry_group).
+  symmetry: D4
+
+camera:
+  width: 640
+  height: 360
+  fx: 320.0
+  fy: 320.0
+  cx: 320.0
+  cy: 180.0
+  # True HFoV = 90 deg (fx=320 over 640 px). The spec's "VFoV = 90 deg" label
+  # is MISLABELED — true VFoV ~58.7 deg. The explicit fx/fy/cx/cy above are
+  # authoritative.
+  lens_distortion: false  # pinhole, no distortion (sim camera)
+  stream: "30 Hz, 640x360, JPEG over UDP:5600"
+
+mount:
+  # Camera up-tilt relative to the body. The VADR SIM camera is fixed at
+  # 20 deg; the team's printed TPU hardware mounts come in these detents
+  # (CameraMount - TPU (NN).stl, Nov 2025), and interpolated angles are valid
+  # with a custom mount. A deployed frame has ONE mount, so each training
+  # dataset is generated at a single tilt (`--camera-tilt`). Perception
+  # outputs are CAMERA-OPTICAL-frame and therefore tilt-invariant; the tilt
+  # enters the camera->body conversion
+  # (sam3: synthetic.pose_gt.optical_to_body(tilt_deg)) and the viewpoint
+  # distribution of the training data.
+  tilt_deg_default: 30.0     # the default mount; datagen + sim mapping default
+  tilt_deg_sim: 30.0         # sim camera mapping (team decision 2026-07-11;
+                             # the VADR-TS-002 document's reference lists 20)
+  tilt_deg_hardware_detents: [30.0, 35.0, 40.0, 45.0, 50.0, 60.0]
+  body_frame: "MAV_FRAME_BODY_NED (X forward, Y right, Z down)"
+
+frames:
+  camera_optical: "OpenCV: +X right, +Y down, +Z forward"
+  gate_body: >-
+    +X right, +Y down, +Z = fly-through axis pointing away from the approach
+    side; head-on upright view from the front reads R_cam_gate = identity.
+  euler: "intrinsic ZYX (yaw-pitch-roll), degrees"
+  quaternion: "(w, x, y, z)"
